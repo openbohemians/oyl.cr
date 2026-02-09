@@ -1,0 +1,13 @@
+name: yam
+version: 0.1.0
+description: YAML 1.2 parser for Crystal, powered by yam
+
+authors:
+  - Thomas Sawyer <transfire@gmail.com>
+
+crystal: '>= 1.19.1'
+
+license: MIT
+
+scripts:
+  postinstall: make -C ext
