@@ -1,3 +1,0 @@
-[submodule "ext/yam"]
-	path = ext/yam
-	url = git@github.com:trans/yam.git

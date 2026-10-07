@@ -1,4 +1,4 @@
-module Yam::Nodes
+module Oyl::Nodes
   abstract class Node
     property anchor : String?
     property tag : String?
@@ -10,17 +10,17 @@ module Yam::Nodes
 
   class Scalar < Node
     property value : String
-    property style : Yam::ScalarStyle
+    property style : Oyl::ScalarStyle
 
-    def initialize(@value : String = "", @style : Yam::ScalarStyle = Yam::ScalarStyle::ANY)
+    def initialize(@value : String = "", @style : Oyl::ScalarStyle = Oyl::ScalarStyle::ANY)
     end
   end
 
   class Sequence < Node
     property nodes : Array(Node)
-    property style : Yam::SequenceStyle
+    property style : Oyl::SequenceStyle
 
-    def initialize(@style : Yam::SequenceStyle = Yam::SequenceStyle::ANY)
+    def initialize(@style : Oyl::SequenceStyle = Oyl::SequenceStyle::ANY)
       @nodes = [] of Node
     end
 
@@ -33,9 +33,9 @@ module Yam::Nodes
 
   class Mapping < Node
     property nodes : Array(Node)
-    property style : Yam::MappingStyle
+    property style : Oyl::MappingStyle
 
-    def initialize(@style : Yam::MappingStyle = Yam::MappingStyle::ANY)
+    def initialize(@style : Oyl::MappingStyle = Oyl::MappingStyle::ANY)
       @nodes = [] of Node
     end
 

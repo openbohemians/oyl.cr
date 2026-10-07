@@ -1,7 +1,7 @@
 require "./nodes/nodes"
 require "./nodes/parser"
 
-module Yam::Nodes
+module Oyl::Nodes
   def self.parse(content : String | IO) : Document
     Parser.new(content, &.parse)
   end

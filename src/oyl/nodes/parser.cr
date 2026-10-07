@@ -1,23 +1,23 @@
-class Yam::Nodes::Parser
-  @anchors = {} of String => Yam::Nodes::Node
+class Oyl::Nodes::Parser
+  @anchors = {} of String => Oyl::Nodes::Node
 
-  def initialize(@pull_parser : Yam::PullParser)
+  def initialize(@pull_parser : Oyl::PullParser)
   end
 
   def self.new(content : String | IO, &)
-    Yam::PullParser.new(content) do |pull|
+    Oyl::PullParser.new(content) do |pull|
       parser = new(pull)
       yield parser
     end
   end
 
-  def parse : Yam::Nodes::Document
+  def parse : Oyl::Nodes::Document
     documents = parse_all
-    documents.first? || Yam::Nodes::Document.new
+    documents.first? || Oyl::Nodes::Document.new
   end
 
-  def parse_all : Array(Yam::Nodes::Document)
-    documents = [] of Yam::Nodes::Document
+  def parse_all : Array(Oyl::Nodes::Document)
+    documents = [] of Oyl::Nodes::Document
 
     @pull_parser.read_stream do
       loop do
@@ -35,8 +35,8 @@ class Yam::Nodes::Parser
     documents
   end
 
-  private def parse_document : Yam::Nodes::Document
-    doc = Yam::Nodes::Document.new
+  private def parse_document : Oyl::Nodes::Document
+    doc = Oyl::Nodes::Document.new
     doc.start_line = @pull_parser.start_line
     doc.start_column = @pull_parser.start_column
 
@@ -57,7 +57,7 @@ class Yam::Nodes::Parser
     doc
   end
 
-  private def parse_node : Yam::Nodes::Node
+  private def parse_node : Oyl::Nodes::Node
     case @pull_parser.kind
     when .scalar?
       parse_scalar
@@ -68,19 +68,19 @@ class Yam::Nodes::Parser
     when .alias?
       parse_alias
     else
-      raise Yam::Error.new("Unexpected event: #{@pull_parser.kind}")
+      raise Oyl::Error.new("Unexpected event: #{@pull_parser.kind}")
     end
   end
 
-  private def parse_scalar : Yam::Nodes::Scalar
-    node = Yam::Nodes::Scalar.new(@pull_parser.value, @pull_parser.scalar_style)
+  private def parse_scalar : Oyl::Nodes::Scalar
+    node = Oyl::Nodes::Scalar.new(@pull_parser.value, @pull_parser.scalar_style)
     apply_properties(node)
     @pull_parser.read_next
     node
   end
 
-  private def parse_sequence : Yam::Nodes::Sequence
-    node = Yam::Nodes::Sequence.new(@pull_parser.sequence_style)
+  private def parse_sequence : Oyl::Nodes::Sequence
+    node = Oyl::Nodes::Sequence.new(@pull_parser.sequence_style)
     apply_properties(node)
     @pull_parser.read_next # consume SEQUENCE_START
 
@@ -94,8 +94,8 @@ class Yam::Nodes::Parser
     node
   end
 
-  private def parse_mapping : Yam::Nodes::Mapping
-    node = Yam::Nodes::Mapping.new(@pull_parser.mapping_style)
+  private def parse_mapping : Oyl::Nodes::Mapping
+    node = Oyl::Nodes::Mapping.new(@pull_parser.mapping_style)
     apply_properties(node)
     @pull_parser.read_next # consume MAPPING_START
 
@@ -110,9 +110,9 @@ class Yam::Nodes::Parser
     node
   end
 
-  private def parse_alias : Yam::Nodes::Alias
+  private def parse_alias : Oyl::Nodes::Alias
     value = @pull_parser.value
-    node = Yam::Nodes::Alias.new(value)
+    node = Oyl::Nodes::Alias.new(value)
     node.resolved = @anchors[value]?
     node.start_line = @pull_parser.start_line
     node.start_column = @pull_parser.start_column
@@ -120,7 +120,7 @@ class Yam::Nodes::Parser
     node
   end
 
-  private def apply_properties(node : Yam::Nodes::Node)
+  private def apply_properties(node : Oyl::Nodes::Node)
     anchor = @pull_parser.anchor
     node.anchor = anchor
     node.tag = @pull_parser.tag

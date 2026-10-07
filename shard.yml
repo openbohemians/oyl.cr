@@ -1,6 +1,6 @@
-name: yam
+name: oyl
 version: 0.1.0
-description: YAML 1.2 parser for Crystal, powered by yam
+description: YAML 1.2 parser for Crystal, powered by Oyl
 
 authors:
   - Thomas Sawyer <transfire@gmail.com>

@@ -1,40 +1,40 @@
 require "base64"
 
-# `Yam::Any` is a convenient wrapper around all possible YAML core
-# schema types (`Yam::Any::Type`) and can be used for traversing
+# `Oyl::Any` is a convenient wrapper around all possible YAML core
+# schema types (`Oyl::Any::Type`) and can be used for traversing
 # dynamic or unknown YAML structures.
 #
 # ```
-# require "yam"
+# require "oyl"
 #
-# data = Yam.parse("---\nname: yam\nversion: 0.1.0")
-# data["name"].as_s   # => "yam"
+# data = Oyl.parse("---\nname: oyl\nversion: 0.1.0")
+# data["name"].as_s    # => "oyl"
 # data["version"].as_s # => "0.1.0"
 # ```
-struct Yam::Any
+struct Oyl::Any
   # All possible YAML core schema types.
   alias Type = Nil | Bool | Int64 | Float64 | String | Time | Bytes |
-               Array(Yam::Any) | Hash(Yam::Any, Yam::Any)
+               Array(Oyl::Any) | Hash(Oyl::Any, Oyl::Any)
 
   # Returns the raw underlying value.
   getter raw : Type
 
-  # Creates a `Yam::Any` that wraps the given value.
+  # Creates a `Oyl::Any` that wraps the given value.
   def initialize(@raw : Type)
   end
 
-  # Creates a `Yam::Any` from a `Yam::Nodes::Node` using the
+  # Creates a `Oyl::Any` from a `Oyl::Nodes::Node` using the
   # core schema for scalar resolution.
-  def self.new(ctx : Yam::ParseContext, node : Yam::Nodes::Node) : Yam::Any
+  def self.new(ctx : Oyl::ParseContext, node : Oyl::Nodes::Node) : Oyl::Any
     case node
-    when Yam::Nodes::Scalar
-      any = new(Yam::Schema::Core.parse_scalar(node))
+    when Oyl::Nodes::Scalar
+      any = new(Oyl::Schema::Core.parse_scalar(node))
       if anchor = node.anchor
         ctx.record_anchor(anchor, any)
       end
       any
-    when Yam::Nodes::Sequence
-      ary = Array(Yam::Any).new(node.size)
+    when Oyl::Nodes::Sequence
+      ary = Array(Oyl::Any).new(node.size)
       node.each do |child|
         ary << new(ctx, child)
       end
@@ -43,9 +43,9 @@ struct Yam::Any
         ctx.record_anchor(anchor, any)
       end
       any
-    when Yam::Nodes::Mapping
-      hash = Hash(Yam::Any, Yam::Any).new
-      Yam::Schema::Core.each(node) do |key_node, value_node|
+    when Oyl::Nodes::Mapping
+      hash = Hash(Oyl::Any, Oyl::Any).new
+      Oyl::Schema::Core.each(node) do |key_node, value_node|
         key = new(ctx, key_node)
         val = new(ctx, value_node)
         hash[key] = val
@@ -55,55 +55,55 @@ struct Yam::Any
         ctx.record_anchor(anchor, any)
       end
       any
-    when Yam::Nodes::Alias
+    when Oyl::Nodes::Alias
       anchor = node.value
       ctx.read_alias(anchor)
     else
-      raise Yam::Error.new("Unknown node type: #{node.class}")
+      raise Oyl::Error.new("Unknown node type: #{node.class}")
     end
   end
 
   # Assumes the underlying value is an `Array` and returns the
   # element at the given *index*.
-  def [](index : Int) : Yam::Any
+  def [](index : Int) : Oyl::Any
     case object = @raw
     when Array
       object[index]
     when Hash
-      object[Yam::Any.new(index.to_i64)]
+      object[Oyl::Any.new(index.to_i64)]
     else
-      raise Yam::Error.new("Expected Array or Hash, not #{object.class}")
+      raise Oyl::Error.new("Expected Array or Hash, not #{object.class}")
     end
   end
 
   # Assumes the underlying value is a `Hash` and returns the
   # value for the given *key*.
-  def [](key : String) : Yam::Any
+  def [](key : String) : Oyl::Any
     case object = @raw
     when Hash
-      object[Yam::Any.new(key)]
+      object[Oyl::Any.new(key)]
     else
-      raise Yam::Error.new("Expected Hash, not #{object.class}")
+      raise Oyl::Error.new("Expected Hash, not #{object.class}")
     end
   end
 
   # Returns the element at the given *index*, or `nil`.
-  def []?(index : Int) : Yam::Any?
+  def []?(index : Int) : Oyl::Any?
     case object = @raw
     when Array
       object[index]?
     when Hash
-      object[Yam::Any.new(index.to_i64)]?
+      object[Oyl::Any.new(index.to_i64)]?
     else
       nil
     end
   end
 
   # Returns the value for the given *key*, or `nil`.
-  def []?(key : String) : Yam::Any?
+  def []?(key : String) : Oyl::Any?
     case object = @raw
     when Hash
-      object[Yam::Any.new(key)]?
+      object[Oyl::Any.new(key)]?
     else
       nil
     end
@@ -111,23 +111,23 @@ struct Yam::Any
 
   # Traverses the depth of a structure and returns the value,
   # otherwise raises.
-  def dig(index_or_key, *subkeys) : Yam::Any
+  def dig(index_or_key, *subkeys) : Oyl::Any
     self[index_or_key].dig(*subkeys)
   end
 
   # :ditto:
-  def dig(index_or_key) : Yam::Any
+  def dig(index_or_key) : Oyl::Any
     self[index_or_key]
   end
 
   # Traverses the depth of a structure and returns the value,
   # or `nil`.
-  def dig?(index_or_key, *subkeys) : Yam::Any?
+  def dig?(index_or_key, *subkeys) : Oyl::Any?
     self[index_or_key]?.try &.dig?(*subkeys)
   end
 
   # :ditto:
-  def dig?(index_or_key) : Yam::Any?
+  def dig?(index_or_key) : Oyl::Any?
     self[index_or_key]?
   end
 
@@ -139,7 +139,7 @@ struct Yam::Any
     when Hash
       object.size
     else
-      raise Yam::Error.new("Expected Array or Hash for #size, not #{object.class}")
+      raise Oyl::Error.new("Expected Array or Hash for #size, not #{object.class}")
     end
   end
 
@@ -227,24 +227,24 @@ struct Yam::Any
   end
 
   # Checks that the underlying value is `Array`, and returns it.
-  def as_a : Array(Yam::Any)
+  def as_a : Array(Oyl::Any)
     @raw.as(Array)
   end
 
   # Checks that the underlying value is `Array`, and returns it.
   # Returns `nil` otherwise.
-  def as_a? : Array(Yam::Any)?
+  def as_a? : Array(Oyl::Any)?
     @raw.as?(Array)
   end
 
   # Checks that the underlying value is `Hash`, and returns it.
-  def as_h : Hash(Yam::Any, Yam::Any)
+  def as_h : Hash(Oyl::Any, Oyl::Any)
     @raw.as(Hash)
   end
 
   # Checks that the underlying value is `Hash`, and returns it.
   # Returns `nil` otherwise.
-  def as_h? : Hash(Yam::Any, Yam::Any)?
+  def as_h? : Hash(Oyl::Any, Oyl::Any)?
     @raw.as?(Hash)
   end
 
@@ -259,14 +259,14 @@ struct Yam::Any
     @raw.as?(Bytes)
   end
 
-  # Returns a new `Yam::Any` with the `raw` value `dup`ed.
+  # Returns a new `Oyl::Any` with the `raw` value `dup`ed.
   def dup
-    Yam::Any.new(raw.dup)
+    Oyl::Any.new(raw.dup)
   end
 
-  # Returns a new `Yam::Any` with the `raw` value `clone`ed.
+  # Returns a new `Oyl::Any` with the `raw` value `clone`ed.
   def clone
-    Yam::Any.new(raw.clone)
+    Oyl::Any.new(raw.clone)
   end
 
   def_equals_and_hash raw
@@ -281,43 +281,43 @@ struct Yam::Any
 end
 
 class Object
-  def ===(other : Yam::Any)
+  def ===(other : Oyl::Any)
     self === other.raw
   end
 end
 
 struct Value
-  def ==(other : Yam::Any)
+  def ==(other : Oyl::Any)
     self == other.raw
   end
 end
 
 struct Struct
-  def ==(other : Yam::Any)
+  def ==(other : Oyl::Any)
     self == other.raw
   end
 end
 
 class Reference
-  def ==(other : Yam::Any)
+  def ==(other : Oyl::Any)
     self == other.raw
   end
 end
 
 class Array
-  def ==(other : Yam::Any)
+  def ==(other : Oyl::Any)
     self == other.raw
   end
 end
 
 class Hash
-  def ==(other : Yam::Any)
+  def ==(other : Oyl::Any)
     self == other.raw
   end
 end
 
 class Regex
-  def ===(other : Yam::Any)
+  def ===(other : Oyl::Any)
     value = self === other.raw
     $~ = $~
     value

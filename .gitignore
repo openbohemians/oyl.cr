@@ -9,4 +9,4 @@
 /shard.lock
 
 # C build artifacts
-/ext/yam/build/
+/ext/oyl/build/

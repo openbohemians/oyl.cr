@@ -4,10 +4,10 @@
 # and base64-encoded binary. Compatible with Crystal's
 # `YAML::Schema::Core` conventions (YAML 1.1 extended booleans:
 # yes/no/on/off).
-module Yam::Schema::Core
+module Oyl::Schema::Core
   # Parses a scalar from a PullParser, taking style and tag into
   # account, then advances the pull parser.
-  def self.parse_scalar(pull_parser : Yam::PullParser) : Nil | Bool | Int64 | Float64 | String | Time | Bytes
+  def self.parse_scalar(pull_parser : Oyl::PullParser) : Nil | Bool | Int64 | Float64 | String | Time | Bytes
     string = pull_parser.value
 
     process_scalar_tag(string, pull_parser.tag, pull_parser.location) do |value|
@@ -23,7 +23,7 @@ module Yam::Schema::Core
 
   # Parses a scalar from a Nodes::Scalar, taking style and tag
   # into account.
-  def self.parse_scalar(node : Yam::Nodes::Scalar) : Nil | Bool | Int64 | Float64 | String | Time | Bytes
+  def self.parse_scalar(node : Oyl::Nodes::Scalar) : Nil | Bool | Int64 | Float64 | String | Time | Bytes
     string = node.value
 
     process_scalar_tag(string, node.tag, {node.start_line, node.start_column}) do |value|
@@ -88,15 +88,15 @@ module Yam::Schema::Core
 
   # If `node` parses to a null value, returns `nil`, otherwise
   # invokes the given block.
-  def self.parse_null_or(node : Yam::Nodes::Node, &)
+  def self.parse_null_or(node : Oyl::Nodes::Node, &)
     unless parse_null?(node)
       yield
     end
   end
 
   # Returns `true` if *node* parses to a null value.
-  def self.parse_null?(node : Yam::Nodes::Node)
-    if node.is_a?(Yam::Nodes::Scalar)
+  def self.parse_null?(node : Oyl::Nodes::Node)
+    if node.is_a?(Oyl::Nodes::Scalar)
       parse_null?(node.value) && node.style.plain?
     else
       false
@@ -105,9 +105,9 @@ module Yam::Schema::Core
 
   # Iterates a mapping's keys and values, resolving merge keys
   # (`<<`) recursively with cycle detection.
-  def self.each(node : Yam::Nodes::Mapping, &)
+  def self.each(node : Oyl::Nodes::Mapping, &)
     stack = [{node, 0}]
-    visited = Set(Yam::Nodes::Mapping).new
+    visited = Set(Oyl::Nodes::Mapping).new
 
     until stack.empty?
       mapping, index = stack.pop
@@ -121,7 +121,7 @@ module Yam::Schema::Core
         value = mapping.nodes[index]
         index += 1
 
-        if key.is_a?(Yam::Nodes::Scalar) &&
+        if key.is_a?(Oyl::Nodes::Scalar) &&
            key.value == "<<" &&
            key.tag != "tag:yaml.org,2002:str" &&
            solve_merge(stack, mapping, index, value, visited)
@@ -134,10 +134,10 @@ module Yam::Schema::Core
   end
 
   private def self.solve_merge(stack, mapping, index, value, visited)
-    value = value.resolved if value.is_a?(Yam::Nodes::Alias)
+    value = value.resolved if value.is_a?(Oyl::Nodes::Alias)
 
     case value
-    when Yam::Nodes::Mapping
+    when Oyl::Nodes::Mapping
       stack.push({mapping, index})
 
       unless visited.includes?(value)
@@ -145,18 +145,18 @@ module Yam::Schema::Core
       end
 
       true
-    when Yam::Nodes::Sequence
+    when Oyl::Nodes::Sequence
       all_mappings = value.nodes.all? do |elem|
-        elem = elem.resolved if elem.is_a?(Yam::Nodes::Alias)
-        elem.is_a?(Yam::Nodes::Mapping)
+        elem = elem.resolved if elem.is_a?(Oyl::Nodes::Alias)
+        elem.is_a?(Oyl::Nodes::Mapping)
       end
 
       if all_mappings
         stack.push({mapping, index})
 
         value.each do |elem|
-          elem = elem.resolved if elem.is_a?(Yam::Nodes::Alias)
-          mapping = elem.as(Yam::Nodes::Mapping)
+          elem = elem.resolved if elem.is_a?(Oyl::Nodes::Alias)
+          mapping = elem.as(Oyl::Nodes::Mapping)
 
           unless visited.includes?(mapping)
             stack.push({mapping, 0})
@@ -175,7 +175,7 @@ module Yam::Schema::Core
   protected def self.parse_binary(string, location) : Bytes
     Base64.decode(string)
   rescue ex : Base64::Error
-    raise Yam::ParseException.new("Error decoding Base64: #{ex.message}", *location)
+    raise Oyl::ParseException.new("Error decoding Base64: #{ex.message}", *location)
   end
 
   protected def self.parse_bool(string, location) : Bool
@@ -184,20 +184,20 @@ module Yam::Schema::Core
       return value
     end
 
-    raise Yam::ParseException.new("Invalid bool", *location)
+    raise Oyl::ParseException.new("Invalid bool", *location)
   end
 
   protected def self.parse_int(string : String, location) : Int64
     return 0_i64 if string == "0"
 
     string.to_i64?(underscore: true, prefix: true, leading_zero_is_octal: true) ||
-      raise(Yam::ParseException.new("Invalid int", *location))
+      raise(Oyl::ParseException.new("Invalid int", *location))
   end
 
   protected def self.parse_float(string, location) : Float64
     parse_float_infinity_and_nan?(string) ||
       parse_float?(string) ||
-      raise(Yam::ParseException.new("Invalid float", *location))
+      raise(Oyl::ParseException.new("Invalid float", *location))
   end
 
   protected def self.parse_null(string, location) : Nil
@@ -205,12 +205,12 @@ module Yam::Schema::Core
       return nil
     end
 
-    raise Yam::ParseException.new("Invalid null", *location)
+    raise Oyl::ParseException.new("Invalid null", *location)
   end
 
   protected def self.parse_time(string, location) : Time
     parse_time?(string) ||
-      raise(Yam::ParseException.new("Invalid timestamp", *location))
+      raise(Oyl::ParseException.new("Invalid timestamp", *location))
   end
 
   protected def self.process_scalar_tag(string, tag, location, &)

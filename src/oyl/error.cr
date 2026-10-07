@@ -1,4 +1,4 @@
-module Yam
+module Oyl
   class Error < Exception
   end
 

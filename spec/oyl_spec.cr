@@ -1,13 +1,13 @@
 require "./spec_helper"
 
-describe Yam do
+describe Oyl do
   it "has a version" do
-    Yam::VERSION.should eq("0.1.0")
+    Oyl::VERSION.should eq("0.1.0")
   end
 
   it "parses a simple mapping" do
-    data = Yam.parse("name: yam\nversion: 0.1.0")
-    data["name"].as_s.should eq("yam")
+    data = Oyl.parse("name: oyl\nversion: 0.1.0")
+    data["name"].as_s.should eq("oyl")
     data["version"].as_s.should eq("0.1.0")
   end
 
@@ -16,13 +16,13 @@ describe Yam do
       name: my-app
       version: 1.0.0
       dependencies:
-        yam:
-          github: trans/yam.cr
+        oyl:
+          github: openbohemians/oyl.cr
           version: ~> 0.1.0
       YAML
-    data = Yam.parse(yaml)
+    data = Oyl.parse(yaml)
     data["name"].as_s.should eq("my-app")
-    data["dependencies"]["yam"]["github"].as_s.should eq("trans/yam.cr")
+    data["dependencies"]["oyl"]["github"].as_s.should eq("openbohemians/oyl.cr")
   end
 
   it "handles arrays of hashes" do
@@ -33,7 +33,7 @@ describe Yam do
         - host: web2
           port: 8081
       YAML
-    data = Yam.parse(yaml)
+    data = Oyl.parse(yaml)
     servers = data["servers"]
     servers.size.should eq(2)
     servers[0]["host"].as_s.should eq("web1")

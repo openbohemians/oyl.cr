@@ -1,4 +1,4 @@
-module Yam
+module Oyl
   enum EventKind
     NONE
     STREAM_START
