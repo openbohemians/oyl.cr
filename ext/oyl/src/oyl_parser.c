@@ -154,7 +154,7 @@ struct oyl_parser {
     oyl_status   scan_error;      /* last scanner error (for incremental path) */
     int          scan_error_out;  /* out_len when scan_error was hit */
     size_t       value_colon_line; /* line of the last block map value ':' */
-    int          value_colon_col;  /* and its column */
+    bool         value_colon_starts_line; /* and whether it starts that line */
 
     /* event handed out by the public oyl_parse_next() */
     oyl_event out_evt;
@@ -3172,6 +3172,17 @@ static inline oyl_status inc_flow_map_value(oyl_parser *p) {
     return OYL_OK;
 }
 
+/* Only blanks before `offset` on its line (the input's start, after a byte
+ * order mark, counts as a line start): a ':' there is an explicit value's
+ * or an empty key's, never an implicit key's (the scanner's classify_colon
+ * decides the same way). */
+static bool starts_line(const oyl_parser *p, size_t offset) {
+    size_t k = offset;
+    while (k > 0 && (p->input[k - 1] == ' ' || p->input[k - 1] == '\t')) k--;
+    if (k == 0 || p->input[k - 1] == '\n' || p->input[k - 1] == '\r') return true;
+    return k == 3 && memcmp(p->input, "\xEF\xBB\xBF", 3) == 0;
+}
+
 /* Bytes of input between checkpoints. The fuzz builds set it small, so
  * that their short inputs take several. */
 #ifndef OYL_CKPT_SPACING
@@ -3917,14 +3928,13 @@ static oyl_status parser_step(oyl_parser *p) {
         if (tt == OYL_TOK_FLOW_SEQ_START || tt == OYL_TOK_FLOW_MAP_START) {
             /* Check if this flow collection is used as a complex block key
              * ([flow]: value). A map value on an implicit key's ':' line
-             * can't be one ("k: [a]: b" is invalid); after an explicit
-             * value's ':', at the mapping's indent, it can (": [a]: b").
-             * Elsewhere, scan ahead to check if ':' follows the matching
-             * close bracket. */
-            state_frame *f = inc_top_frame(p);
+             * can't be one ("k: [a]: b" is invalid); after a ':' that
+             * starts its line (an explicit value's, or an empty key's), it
+             * can (": [a]: b"), as the scanner has it. Elsewhere, scan
+             * ahead to check if ':' follows the matching close bracket. */
             if ((p->node_return == ST_BLOCK_MAP_LOOP &&
                  p->current.start.line == p->value_colon_line &&
-                 !(f && p->value_colon_col == f->indent)) ||
+                 !p->value_colon_starts_line) ||
                 !flow_is_block_key(p, p->current.start.offset)) {
                 p->state = ST_FLOW_NODE;
             } else {
@@ -4267,7 +4277,7 @@ static oyl_status parser_step(oyl_parser *p) {
             p->state = ST_BLOCK_MAP_LOOP;
             return OYL_OK;
         }
-        int colon_col = tok_col(p);
+        bool colon_starts_line = starts_line(p, p->current.start.offset);
         size_t colon_line = p->current.start.line;
         consume_token(p);
 
@@ -4279,7 +4289,7 @@ static oyl_status parser_step(oyl_parser *p) {
         int map_indent = top ? top->indent : 0;
 
         p->value_colon_line = colon_line;
-        p->value_colon_col = colon_col;
+        p->value_colon_starts_line = colon_starts_line;
 
         /* empty value: next token at same/less indent, or is doc/stream marker */
         if (tt == OYL_TOK_DOC_START || tt == OYL_TOK_DOC_END ||

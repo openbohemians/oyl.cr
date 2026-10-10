@@ -233,6 +233,9 @@ static bool flow_push(oyl_scanner *s, bool is_map) {
  * record of props right before it (props inside it overwrote that). */
 static oyl_mark flow_pop(oyl_scanner *s) {
     if (s->flows_len == 0) return mark(s);
+    /* closing the collection a '?' entry is in ends that entry: a ':'
+     * after this is no longer its value */
+    if (s->explicit_key && s->explicit_depth >= s->flows_len) s->explicit_key = false;
     s->flows_len--;
     oyl_mark open = s->flows[s->flows_len].open;
     if (s->flows[s->flows_len].props_col >= 0) {
@@ -1158,6 +1161,8 @@ oyl_status oyl_scan_token(oyl_scanner *s, oyl_token *tok) {
     }
     case ',':
         s->last_was_quoted = false;   /* ":" after "," is not adjacent to a key */
+        /* so does a ',' at its depth: the entry ended without a value */
+        if (s->explicit_key && s->explicit_depth == s->flows_len) s->explicit_key = false;
         advance(s, 1);
         *tok = tok_simple(OYL_TOK_FLOW_ENTRY, start, mark(s));
         return OYL_OK;
