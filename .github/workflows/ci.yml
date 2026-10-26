@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            crystal: latest
+          - os: macos-latest
+            crystal: latest
+          # the oldest Crystal that shard.yml allows
+          - os: ubuntu-latest
+            crystal: 1.19.1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: crystal-lang/install-crystal@v1
+        with:
+          crystal: ${{ matrix.crystal }}
+      - name: Build the C library
+        run: make -C ext
+      - name: Spec
+        run: crystal spec
