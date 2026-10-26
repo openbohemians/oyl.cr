@@ -48,9 +48,17 @@ static size_t skip_blanks_scalar(const char *buf, size_t len) {
     return len;
 }
 
-static size_t scan_to_break_scalar(const char *buf, size_t len) {
+static size_t find_break_scalar(const char *buf, size_t len) {
     for (size_t i = 0; i < len; i++) {
         if (buf[i] == '\n' || buf[i] == '\r') return i;
+    }
+    return len;
+}
+
+static size_t scan_to_break_scalar(const char *buf, size_t len) {
+    for (size_t i = 0; i < len; i++) {
+        uint8_t c = (uint8_t)buf[i];
+        if ((c < 0x20 && c != '\t') || c == 0x7F) return i;   /* breaks among them */
     }
     return len;
 }
@@ -116,7 +124,7 @@ static size_t skip_blanks_sse42(const char *buf, size_t len) {
 }
 
 __attribute__((target("sse4.2")))
-static size_t scan_to_break_sse42(const char *buf, size_t len) {
+static size_t find_break_sse42(const char *buf, size_t len) {
     size_t i = 0;
 
     const __m128i nl = _mm_set1_epi8('\n');
@@ -136,6 +144,31 @@ static size_t scan_to_break_sse42(const char *buf, size_t len) {
     return len;
 }
 
+__attribute__((target("sse4.2")))
+static size_t scan_to_break_sse42(const char *buf, size_t len) {
+    size_t i = 0;
+
+    /* below 0x20 but a tab (line breaks among them), or DEL */
+    const __m128i c1f = _mm_set1_epi8(0x1F);
+    const __m128i tab = _mm_set1_epi8('\t');
+    const __m128i del = _mm_set1_epi8(0x7F);
+
+    for (; i + 16 <= len; i += 16) {
+        __m128i chunk = _mm_loadu_si128((const __m128i *)(buf + i));
+        __m128i low = _mm_cmpeq_epi8(_mm_min_epu8(chunk, c1f), chunk);
+        __m128i stop = _mm_or_si128(_mm_andnot_si128(_mm_cmpeq_epi8(chunk, tab), low),
+                                    _mm_cmpeq_epi8(chunk, del));
+        int mask = _mm_movemask_epi8(stop);
+        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+    }
+
+    for (; i < len; i++) {
+        uint8_t c = (uint8_t)buf[i];
+        if ((c < 0x20 && c != '\t') || c == 0x7F) return i;
+    }
+    return len;
+}
+
 #endif /* OYL_X86 */
 
 /* ── Dispatch ────────────────────────────────────────────────────────────── */
@@ -146,6 +179,8 @@ static size_t (*skip_blanks_impl)(const char *, size_t) =
     skip_blanks_scalar;
 static size_t (*scan_to_break_impl)(const char *, size_t) =
     scan_to_break_scalar;
+static size_t (*find_break_impl)(const char *, size_t) =
+    find_break_scalar;
 
 __attribute__((constructor))
 static void oyl_simd_init(void) {
@@ -155,6 +190,7 @@ static void oyl_simd_init(void) {
         scan_plain_scalar_impl = scan_plain_scalar_sse42;
         skip_blanks_impl       = skip_blanks_sse42;
         scan_to_break_impl     = scan_to_break_sse42;
+        find_break_impl        = find_break_sse42;
     }
 #endif
 }
@@ -169,4 +205,8 @@ size_t oyl_skip_blanks(const char *buf, size_t len) {
 
 size_t oyl_scan_to_break(const char *buf, size_t len) {
     return scan_to_break_impl(buf, len);
+}
+
+size_t oyl_find_break(const char *buf, size_t len) {
+    return find_break_impl(buf, len);
 }

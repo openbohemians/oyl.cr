@@ -193,7 +193,8 @@ commit they came from. To vendor another version, from a checkout of
 [Oyl](https://github.com/openbohemians/oyl):
 
 ```sh
-make -C ext sync OYL=path/to/oyl   # copies the checkout's committed HEAD
+make -C ext sync OYL=path/to/oyl              # the checkout's committed HEAD
+make -C ext sync OYL=path/to/oyl REF=v1.2.0   # or a release tag
 make -C ext && crystal spec
 ```
 

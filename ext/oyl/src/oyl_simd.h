@@ -11,6 +11,7 @@
 #ifndef OYL_SIMD_H
 #define OYL_SIMD_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -21,8 +22,13 @@ size_t oyl_scan_plain_scalar(const char *buf, size_t len);
 /* Skip spaces and tabs. Returns offset of the first non-blank, or `len`. */
 size_t oyl_skip_blanks(const char *buf, size_t len);
 
-/* Find first line break (\n or \r). Returns its offset, or `len`. */
+/* Find the first line break (\n or \r), or control character no text may
+ * hold (oyl_is_control). Returns its offset, or `len`. */
 size_t oyl_scan_to_break(const char *buf, size_t len);
+
+/* Find the first line break (\n or \r), in text already checked. Returns
+ * its offset, or `len`. */
+size_t oyl_find_break(const char *buf, size_t len);
 
 /* Scan to end of comment (to line break or EOF) — same as scan_to_break. */
 #define oyl_skip_comment oyl_scan_to_break
@@ -53,6 +59,44 @@ static inline size_t oyl_find_any4(const char *buf, size_t len,
         if (x == a || x == b || x == c || x == d) return i;
     }
     return len;
+}
+
+/* Is c a control character YAML text can't hold: C0 but tab (line breaks
+ * included, which callers take first), or DEL? Quoted scalars may hold
+ * DEL (oyl_find_in_quotes). */
+static inline bool oyl_is_control(unsigned char c) { return (c < 0x20 && c != '\t') || c == 0x7F; }
+
+/* Offset of the first byte in buf[0..len) equal to a or b, or below 0x20
+ * but a tab (a line break, or a control character no quoted scalar may
+ * hold), or `len`: where a run of a quoted scalar's text ends */
+static inline size_t oyl_find_in_quotes(const char *buf, size_t len, char a, char b) {
+    size_t i = 0;
+#if defined(__SSE2__)
+    const __m128i va = _mm_set1_epi8(a), vb = _mm_set1_epi8(b);
+    const __m128i c1f = _mm_set1_epi8(0x1F), tab = _mm_set1_epi8('\t');
+    for (; i + 16 <= len; i += 16) {
+        __m128i v = _mm_loadu_si128((const __m128i *)(buf + i));
+        __m128i low = _mm_andnot_si128(_mm_cmpeq_epi8(v, tab), _mm_cmpeq_epi8(_mm_min_epu8(v, c1f), v));
+        __m128i m = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, va), _mm_cmpeq_epi8(v, vb)), low);
+        int mask = _mm_movemask_epi8(m);
+        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+    }
+#endif
+    for (; i < len; i++) {
+        char x = buf[i];
+        if (x == a || x == b || ((unsigned char)x < 0x20 && x != '\t')) return i;
+    }
+    return len;
+}
+
+/* oyl_find_in_quotes for text that is usually short */
+static inline size_t oyl_find_in_quotes_short(const char *buf, size_t len, char a, char b) {
+    size_t i = 0;
+    for (; i < len && i < 8; i++) {
+        char x = buf[i];
+        if (x == a || x == b || ((unsigned char)x < 0x20 && x != '\t')) return i;
+    }
+    return i + oyl_find_in_quotes(buf + i, len - i, a, b);
 }
 
 /* oyl_find_any4 for text that is usually short (a quoted key or JSON

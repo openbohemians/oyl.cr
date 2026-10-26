@@ -4,11 +4,13 @@
 #
 #   make -C ext                          build (the shard's postinstall)
 #   make -C ext sync OYL=path/to/oyl     vendor another version: the
-#                                        checkout's committed HEAD
+#                                        checkout's committed HEAD,
+#        ... sync OYL=path/to/oyl REF=v1.2.0   or a release tag
 
 CC ?= cc
 AR ?= ar
 CFLAGS ?= -O2
+REF ?= HEAD
 
 SRCS := $(wildcard oyl/src/*.c)
 OBJS := $(SRCS:oyl/src/%.c=oyl/build/%.o)
@@ -26,8 +28,8 @@ sync:
 	@test -n "$(OYL)" || { echo "usage: make sync OYL=path/to/oyl" >&2; exit 1; }
 	rm -rf oyl
 	mkdir -p oyl
-	git -C "$(OYL)" archive HEAD src include LICENSE | tar -x -C oyl
-	git -C "$(OYL)" log -1 --format='%H %cs %s' > oyl/COMMIT
+	git -C "$(OYL)" archive "$(REF)" src include LICENSE | tar -x -C oyl
+	git -C "$(OYL)" log -1 --format='%H %cs %s' "$(REF)" > oyl/COMMIT
 	@echo "vendored: $$(cat oyl/COMMIT)"
 
 clean:

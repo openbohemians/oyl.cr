@@ -60,6 +60,14 @@ oyl_arena *oyl_arena_new(size_t initial_cap) {
     return a;
 }
 
+/* A test build (OYL_ARENA_EACH) gives every request a block of its own:
+ * each is then a malloc, which the allocation failure test can fail. */
+#ifdef OYL_ARENA_EACH
+#define ARENA_EACH 1
+#else
+#define ARENA_EACH 0
+#endif
+
 /* Offset within block b at or after `from` whose address is aligned. */
 static size_t aligned_offset(const oyl_block *b, size_t from, size_t align) {
     uintptr_t addr = (uintptr_t)BLOCK_DATA(b) + from;
@@ -74,11 +82,12 @@ void *oyl_arena_alloc(oyl_arena *a, size_t size, size_t align) {
     oyl_block *b = a->head;
     size_t aligned = aligned_offset(b, b->used, align);
 
-    if (aligned > b->cap || size > b->cap - aligned) {
+    if (ARENA_EACH || aligned > b->cap || size > b->cap - aligned) {
         /* need a new block — at least double or fit the request */
         size_t cap = a->default_cap;
         if (cap < size + align) cap = size + align;
         if (b->cap <= SIZE_MAX / 2 && cap < b->cap * 2) cap = b->cap * 2;
+        if (ARENA_EACH) cap = size + align;
 
         oyl_block *nb = block_new(cap);
         if (!nb) return NULL;
