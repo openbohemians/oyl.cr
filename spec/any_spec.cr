@@ -14,12 +14,16 @@ describe Oyl::Any do
       Oyl.parse("true").as_bool.should be_true
       Oyl.parse("True").as_bool.should be_true
       Oyl.parse("TRUE").as_bool.should be_true
-      Oyl.parse("yes").as_bool.should be_true
-      Oyl.parse("on").as_bool.should be_true
       Oyl.parse("false").as_bool.should be_false
       Oyl.parse("False").as_bool.should be_false
-      Oyl.parse("no").as_bool.should be_false
-      Oyl.parse("off").as_bool.should be_false
+      Oyl.parse("FALSE").as_bool.should be_false
+    end
+
+    it "reads YAML 1.1's booleans as strings" do
+      %w(yes no on off Yes NO y n).each do |word|
+        Oyl.parse(word).as_s.should eq(word)
+      end
+      Oyl.parse("on: push")["on"].as_s.should eq("push")
     end
 
     it "parses integer values" do
@@ -28,6 +32,27 @@ describe Oyl::Any do
       Oyl.parse("0").as_i64.should eq(0_i64)
       Oyl.parse("0x1A").as_i64.should eq(26_i64)
       Oyl.parse("0o17").as_i64.should eq(15_i64)
+      Oyl.parse("017").as_i64.should eq(17_i64)
+    end
+
+    it "parses integers above Int64::MAX" do
+      Oyl.parse("18446744073709551615").as_u64.should eq(UInt64::MAX)
+    end
+
+    it "reads dates, base 60 and underscores as strings" do
+      Oyl.parse("2001-12-14").as_s.should eq("2001-12-14")
+      Oyl.parse("1:30").as_s.should eq("1:30")
+      Oyl.parse("1_000").as_s.should eq("1_000")
+    end
+
+    it "reads tagged scalars by their tag" do
+      Oyl.parse("!!str 42").as_s.should eq("42")
+      Oyl.parse("!!float 1").as_f.should eq(1.0)
+      Oyl.parse("!!binary aGVsbG8=").as_bytes.should eq("hello".to_slice)
+      Oyl.parse("!!timestamp 2001-12-14").as_time.should eq(Time.utc(2001, 12, 14))
+      Oyl.parse("!foo 42").as_s.should eq("42")
+      Oyl.parse("! 42").as_s.should eq("42")
+      expect_raises(Oyl::ParseException, "Invalid int") { Oyl.parse("!!int abc") }
     end
 
     it "parses float values" do
@@ -130,11 +155,48 @@ describe Oyl::Any do
       data["production"]["port"].as_i.should eq(80)
     end
 
+    it "keeps the keys a mapping writes over a merge's" do
+      yaml = "b: &b {a: 1, c: 2}\nx: {a: 9, <<: *b}\ny: {<<: *b, a: 9}"
+      data = Oyl.parse(yaml)
+      data["x"].should eq(Oyl.parse("{a: 9, c: 2}"))
+      data["y"].should eq(Oyl.parse("{a: 9, c: 2}"))
+    end
+
     it "resolves scalar aliases" do
       yaml = "a: &val hello\nb: *val"
       data = Oyl.parse(yaml)
       data["a"].as_s.should eq("hello")
       data["b"].as_s.should eq("hello")
+    end
+  end
+
+  describe "dialects" do
+    it "reads YAML 1.1 as PyYAML does" do
+      data = Oyl.parse("[yes, off, 017, 0b101, '1:30', 1:30, 2001-12-14, y]", dialect: :yaml11)
+      data[0].as_bool.should be_true
+      data[1].as_bool.should be_false
+      data[2].as_i64.should eq(15_i64)
+      data[3].as_i64.should eq(5_i64)
+      data[4].as_s.should eq("1:30")
+      data[5].as_i64.should eq(90_i64)
+      data[6].as_time.should eq(Time.utc(2001, 12, 14))
+      data[7].as_s.should eq("y")
+    end
+
+    it "reads go-yaml v2's types" do
+      Oyl.parse("[y, N, 0777]", dialect: :goyaml2).should eq(Oyl.parse("[true, false, 511]"))
+    end
+
+    it "reads a %YAML 1.1 document as YAML 1.1" do
+      docs = Oyl.parse_all("%YAML 1.1\n---\nyes\n...\n---\nyes")
+      docs[0].as_bool.should be_true
+      docs[1].as_s.should eq("yes")
+    end
+
+    it "raises on a YAML 1.1 date that doesn't exist" do
+      expect_raises(Oyl::ParseException, "Invalid timestamp") do
+        Oyl.parse("2001-02-29", dialect: :yaml11)
+      end
     end
   end
 

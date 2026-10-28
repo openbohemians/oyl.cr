@@ -1,8 +1,6 @@
-require "base64"
-
-# `Oyl::Any` is a convenient wrapper around all possible YAML core
-# schema types (`Oyl::Any::Type`) and can be used for traversing
-# dynamic or unknown YAML structures.
+# `Oyl::Any` is a convenient wrapper around all possible YAML values
+# (`Oyl::Any::Type`) and can be used for traversing dynamic or unknown
+# YAML structures.
 #
 # ```
 # require "oyl"
@@ -12,8 +10,9 @@ require "base64"
 # data["version"].as_s # => "0.1.0"
 # ```
 struct Oyl::Any
-  # All possible YAML core schema types.
-  alias Type = Nil | Bool | Int64 | Float64 | String | Time | Bytes |
+  # All possible YAML values: `Time` comes from YAML 1.1's timestamps
+  # and `Bytes` from `!!binary`.
+  alias Type = Nil | Bool | Int64 | UInt64 | Float64 | String | Time | Bytes |
                Array(Oyl::Any) | Hash(Oyl::Any, Oyl::Any)
 
   # Returns the raw underlying value.
@@ -23,12 +22,13 @@ struct Oyl::Any
   def initialize(@raw : Type)
   end
 
-  # Creates a `Oyl::Any` from a `Oyl::Nodes::Node` using the
-  # core schema for scalar resolution.
+  # Creates a `Oyl::Any` from a `Oyl::Nodes::Node`, typing scalars with
+  # the context's dialect. A `<<` key stays a key: `Oyl.parse` has the
+  # parser apply merges.
   def self.new(ctx : Oyl::ParseContext, node : Oyl::Nodes::Node) : Oyl::Any
     case node
     when Oyl::Nodes::Scalar
-      any = new(Oyl::Schema::Core.parse_scalar(node))
+      any = new(ctx.dialect.value(node))
       if anchor = node.anchor
         ctx.record_anchor(anchor, any)
       end
@@ -45,7 +45,7 @@ struct Oyl::Any
       any
     when Oyl::Nodes::Mapping
       hash = Hash(Oyl::Any, Oyl::Any).new
-      Oyl::Schema::Core.each(node) do |key_node, value_node|
+      node.each_pair do |key_node, value_node|
         key = new(ctx, key_node)
         val = new(ctx, value_node)
         hash[key] = val
@@ -179,6 +179,18 @@ struct Oyl::Any
   # value. Returns `nil` otherwise.
   def as_i64? : Int64?
     @raw.as?(Int64)
+  end
+
+  # Checks that the underlying value is `UInt64`, and returns its value.
+  # Only integers above `Int64::MAX` are read as one.
+  def as_u64 : UInt64
+    @raw.as(UInt64)
+  end
+
+  # Checks that the underlying value is `UInt64`, and returns its
+  # value. Returns `nil` otherwise.
+  def as_u64? : UInt64?
+    @raw.as?(UInt64)
   end
 
   # Checks that the underlying value is `Float64`, and returns its value.

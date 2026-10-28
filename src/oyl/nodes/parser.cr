@@ -4,8 +4,8 @@ class Oyl::Nodes::Parser
   def initialize(@pull_parser : Oyl::PullParser)
   end
 
-  def self.new(content : String | IO, &)
-    Oyl::PullParser.new(content) do |pull|
+  def self.new(content : String | IO, *, dialect : Oyl::Dialect = :yaml12, merge : Bool = false, &)
+    Oyl::PullParser.new(content, dialect: dialect, merge: merge) do |pull|
       parser = new(pull)
       yield parser
     end
@@ -39,6 +39,7 @@ class Oyl::Nodes::Parser
     doc = Oyl::Nodes::Document.new
     doc.start_line = @pull_parser.start_line
     doc.start_column = @pull_parser.start_column
+    doc.dialect = @pull_parser.document_dialect
 
     @pull_parser.read_next # consume DOCUMENT_START
 

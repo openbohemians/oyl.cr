@@ -125,6 +125,32 @@ lib LibOyl
   type Emitter = Void
   type Schema = Void
   type SchemaBuilder = Void
+  type Dialect = Void
+
+  # ── Scalar values ────────────────────────────────────────
+
+  # Kinds may be added at the end; treat one you don't know as text.
+  enum ValueKind
+    Null  = 0
+    Bool
+    Int
+    Uint
+    Float
+    Str
+  end
+
+  union ValueData
+    b : Bool
+    i : Int64
+    u : UInt64
+    f : Float64
+    s : Str
+  end
+
+  struct Value
+    kind : ValueKind
+    data : ValueData
+  end
 
   # ── Tag constants ────────────────────────────────────────
 
@@ -163,6 +189,9 @@ lib LibOyl
   fun schema_json = oyl_schema_json : Schema*
   fun schema_core = oyl_schema_core : Schema*
   fun schema_resolve = oyl_schema_resolve(schema : Schema*, value : Str, style : ScalarStyle) : Str
+  fun schema_yaml11 = oyl_schema_yaml11 : Schema*
+  fun schema_goyaml2 = oyl_schema_goyaml2 : Schema*
+  fun schema_value_of = oyl_schema_value_of(schema : Schema*, text : Str, style : ScalarStyle, tag : Str, out : Value*) : Status
 
   fun schema_builder_new = oyl_schema_builder_new(a : Arena*) : SchemaBuilder*
   fun schema_builder_add = oyl_schema_builder_add(b : SchemaBuilder*, match : MatchType, pattern : LibC::Char*, tag : Str) : Void
@@ -185,6 +214,16 @@ lib LibOyl
   fun parser_error = oyl_parser_error(p : Parser*) : LibC::Char*
   fun parser_error_mark = oyl_parser_error_mark(p : Parser*) : Mark
   fun parser_free = oyl_parser_free(p : Parser*) : Void
+
+  # ── Dialects ─────────────────────────────────────────────
+
+  fun dialect_yaml12 = oyl_dialect_yaml12 : Dialect*
+  fun dialect_yaml11 = oyl_dialect_yaml11 : Dialect*
+  fun dialect_goyaml2 = oyl_dialect_goyaml2 : Dialect*
+  fun dialect_schema = oyl_dialect_schema(d : Dialect*) : Schema*
+  fun dialect_version = oyl_dialect_version(d : Dialect*, major : LibC::Int*, minor : LibC::Int*) : Void
+  fun parser_set_dialect = oyl_parser_set_dialect(p : Parser*, d : Dialect*) : Void
+  fun parser_document_dialect = oyl_parser_document_dialect(p : Parser*) : Dialect*
 
   # ── Emitter ──────────────────────────────────────────────
 

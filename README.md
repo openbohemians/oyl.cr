@@ -33,9 +33,10 @@ data["version"].as_s # => "0.1.0"
 
 ### Parsing to Any
 
-`Oyl.parse` returns an `Oyl::Any`, resolving plain scalars the way
-Crystal's own `YAML` module does: null, booleans (including `yes`/`no` and
-`on`/`off`), integers, floats and timestamps, plus `!!binary`:
+`Oyl.parse` returns an `Oyl::Any`, typing plain scalars by YAML 1.2's Core
+schema, as Oyl does: `null`, `~` and empty are null; `true` and `false`
+are booleans; decimal, `0o` and `0x` integers; floats, `.inf` and `.nan`.
+Everything else is a string, including `yes`, `on` and dates:
 
 ```crystal
 data = Oyl.parse <<-YAML
@@ -56,6 +57,29 @@ Quoted scalars are always strings:
 Oyl.parse(%("42")).as_s # => "42"
 Oyl.parse("42").as_i    # => 42
 ```
+
+A tag reads its scalar by the tag's rules: `!!str 42` is a string,
+`!!binary` gives `Bytes`, `!!timestamp` a `Time`, and a scalar its tag
+doesn't accept (`!!int abc`) raises `Oyl::ParseException`.
+
+### YAML 1.1 and other dialects
+
+Files written for YAML 1.1 loaders (PyYAML, Ruby's Psych, go-yaml v2) mean
+some scalars differently. Choose how to read them with `dialect:`:
+
+```crystal
+Oyl.parse("[yes, 017, 1:30, 2001-12-14]")                    # => ["yes", 17, "1:30", "2001-12-14"]
+Oyl.parse("[yes, 017, 1:30, 2001-12-14]", dialect: :yaml11) # => [true, 15, 90, 2001-12-14 00:00:00Z]
+```
+
+| Dialect | Types |
+|---------|-------|
+| `:yaml12` | YAML 1.2's Core schema (the default) |
+| `:yaml11` | YAML 1.1 as PyYAML reads it: also `yes`/`no`/`on`/`off`, 0-octal, `0b`, base 60, timestamps |
+| `:goyaml2` | go-yaml v2's, as Kubernetes reads YAML: YAML 1.1's and `y`/`n` |
+
+A document that starts with `%YAML 1.1` is read as YAML 1.1 whatever the
+dialect (as go-yaml v2 with `:goyaml2`).
 
 ### Multi-document
 
@@ -95,6 +119,10 @@ data["production"]["host"].as_s     # => "localhost"
 data["production"]["database"].as_s # => "mydb"
 ```
 
+`Oyl.parse` applies `<<` merge keys, and the keys a mapping writes win
+over the ones it merges, wherever the `<<` is. (go-yaml v2 lets a merge
+override the keys written before it; `:goyaml2` doesn't copy that yet.)
+
 ### AST (Nodes API)
 
 For full control over the parsed structure, use the Nodes API:
@@ -114,7 +142,10 @@ val.start_line   # => 1
 val.start_column # => 6
 ```
 
-Node types: `Scalar`, `Sequence`, `Mapping`, `Alias`.
+Node types: `Scalar`, `Sequence`, `Mapping`, `Alias`. Scalars keep their
+text, and `<<` merge keys stay as written unless you pass `merge: true`.
+`Oyl::Nodes.parse` takes `dialect:` too, and each `Document` records the
+dialect that types its scalars (`Oyl::Dialect#value` gives a scalar's).
 
 ### PullParser (low-level)
 
@@ -150,8 +181,8 @@ end
 
 | Method | Returns | Description |
 |--------|---------|-------------|
-| `Oyl.parse(data)` | `Oyl::Any` | Parse a single YAML document |
-| `Oyl.parse_all(data)` | `Array(Oyl::Any)` | Parse all documents in a stream |
+| `Oyl.parse(data, dialect: :yaml12)` | `Oyl::Any` | Parse a single YAML document |
+| `Oyl.parse_all(data, dialect: :yaml12)` | `Array(Oyl::Any)` | Parse all documents in a stream |
 
 ### Oyl::Any
 
@@ -160,6 +191,7 @@ end
 | `as_s`, `as_s?` | Access as `String` |
 | `as_i`, `as_i?` | Access as `Int32` |
 | `as_i64`, `as_i64?` | Access as `Int64` |
+| `as_u64`, `as_u64?` | Access as `UInt64` (integers above `Int64::MAX`) |
 | `as_f`, `as_f?` | Access as `Float64` |
 | `as_bool`, `as_bool?` | Access as `Bool` |
 | `as_a`, `as_a?` | Access as `Array(Oyl::Any)` |
@@ -181,7 +213,7 @@ end
 | `Sequence` | Ordered list (`style`, `nodes`) |
 | `Mapping` | Key-value pairs (`style`, `nodes` as flat key/val/key/val) |
 | `Alias` | Alias reference (`value`, `resolved`) |
-| `Document` | Document container (`nodes`) |
+| `Document` | Document container (`nodes`, `dialect`) |
 
 All nodes carry `start_line`, `start_column`, `end_line`, `end_column`
 (1-based source positions).

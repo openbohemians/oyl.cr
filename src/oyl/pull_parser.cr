@@ -1,17 +1,25 @@
 class Oyl::PullParser
   @content : String
 
+  # *dialect* reads documents that don't choose their own (see
+  # `document_dialect`). With *merge*, `<<` merge keys are applied as
+  # YAML's merge has it (the keys a mapping writes win) and don't reach
+  # the events.
+  #
   # Safety limits: *max_events* bounds the events in the stream (alias and
   # merge expansion included) and *max_depth* the nesting of collections;
   # exceeding either raises `Oyl::ParseException`. `nil` keeps the
   # library's defaults (10,000 events, depth 256); 0 disables a limit.
-  def initialize(content : String | IO, *, max_events : Int32? = nil, max_depth : Int32? = nil)
+  def initialize(content : String | IO, *, dialect : Oyl::Dialect = :yaml12, merge : Bool = false,
+                 max_events : Int32? = nil, max_depth : Int32? = nil)
     input = content.is_a?(IO) ? content.gets_to_end : content
     @content = input
     @arena = LibOyl.arena_new(input.bytesize < 4096 ? 4096_u64 : input.bytesize.to_u64)
     raise Oyl::Error.new("Failed to allocate arena") unless @arena
     @parser = LibOyl.parser_new(@content, @content.bytesize, @arena)
     raise Oyl::Error.new("Failed to create parser") unless @parser
+    LibOyl.parser_set_dialect(@parser, dialect)
+    LibOyl.parser_set_merge(@parser, merge)
     max_events.try { |max| LibOyl.parser_set_max_events(@parser, max) }
     max_depth.try { |max| LibOyl.parser_set_max_depth(@parser, max) }
     @event = LibOyl::Event.new
@@ -20,8 +28,9 @@ class Oyl::PullParser
     raise "Expected STREAM_START" unless kind.stream_start?
   end
 
-  def self.new(content, *, max_events : Int32? = nil, max_depth : Int32? = nil, &)
-    parser = new(content, max_events: max_events, max_depth: max_depth)
+  def self.new(content, *, dialect : Oyl::Dialect = :yaml12, merge : Bool = false,
+               max_events : Int32? = nil, max_depth : Int32? = nil, &)
+    parser = new(content, dialect: dialect, merge: merge, max_events: max_events, max_depth: max_depth)
     yield parser ensure parser.close
   end
 
@@ -64,6 +73,14 @@ class Oyl::PullParser
   def mapping_style : Oyl::MappingStyle
     expect_kind Oyl::EventKind::MAPPING_START
     @event.flow ? Oyl::MappingStyle::FLOW : Oyl::MappingStyle::BLOCK
+  end
+
+  # The dialect of the document a DOCUMENT_START begins: YAML 1.1's if a
+  # `%YAML 1.1` directive chose it (go-yaml v2's when that is the parser's
+  # dialect), else the parser's.
+  def document_dialect : Oyl::Dialect
+    expect_kind Oyl::EventKind::DOCUMENT_START
+    Oyl::Dialect.from(LibOyl.parser_document_dialect(@parser))
   end
 
   def read_next : Oyl::EventKind

@@ -60,6 +60,8 @@ module Oyl::Nodes
 
   class Document < Node
     property nodes : Array(Node)
+    # The dialect that types its scalars.
+    property dialect : Oyl::Dialect = Oyl::Dialect::YAML12
 
     def initialize
       @nodes = [] of Node

@@ -1,5 +1,9 @@
 class Oyl::ParseContext
+  getter dialect : Oyl::Dialect
   @anchors = {} of String => Oyl::Any
+
+  def initialize(@dialect : Oyl::Dialect = :yaml12)
+  end
 
   def record_anchor(anchor : String, value : Oyl::Any)
     @anchors[anchor] = value
