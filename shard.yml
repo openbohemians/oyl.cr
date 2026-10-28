@@ -1,5 +1,5 @@
 name: oyl
-version: 0.1.0
+version: 0.2.0
 description: YAML 1.2 parser for Crystal, powered by Oyl
 
 authors:
