@@ -175,6 +175,82 @@ Oyl::PullParser.new(File.read("big.yaml"), max_events: 1_000_000) do |parser|
 end
 ```
 
+### Writing YAML
+
+`Oyl.dump` writes a value as a YAML 1.2 document, and `Oyl::Any#to_yaml`
+writes what `Oyl.parse` read:
+
+```crystal
+Oyl.dump({"name" => "oyl", "tags" => ["fast", "yaml"], "port" => 8080})
+# name: oyl
+# tags:
+#   - fast
+#   - yaml
+# port: 8080
+```
+
+What it writes reads back as the same value, in YAML 1.2 and in YAML 1.1
+readers alike. A string that either would read as another type is quoted:
+`"yes"`, `"on"`, `"n"` (a boolean to go-yaml v2), `"017"`, `"1:30"`,
+`""`. Text with line breaks is written as a literal block (`|`). YAML 1.2
+has no plain form for times and bytes, so a `Time` is written
+`!!timestamp 2001-12-14` and `Bytes` as `!!binary`.
+
+Reading a YAML 1.1 file and writing it back gives YAML 1.2, with the
+values YAML 1.1 gave them (comments and layout aren't kept):
+
+```crystal
+Oyl.parse("enabled: yes\nmode: 0755\n", dialect: :yaml11).to_yaml
+# enabled: true
+# mode: 493
+```
+
+`style:` chooses `:block` (the default), `:flow` or `:minimal`, and
+`indent:` the spaces per level (1 to 10, default 2). `Oyl.dump_all` writes
+several documents.
+
+Nil, booleans, numbers, strings, symbols, `Time`, `Bytes`, arrays,
+tuples, sets, hashes and named tuples write themselves. A type of your own
+does with `to_oyl`:
+
+```crystal
+record Point, x : Int32, y : Int32 do
+  def to_oyl(builder : Oyl::Builder) : Nil
+    builder.mapping(style: :flow) do
+      builder.write "x"
+      builder.write x
+      builder.write "y"
+      builder.write y
+    end
+  end
+end
+
+Oyl.dump([Point.new(1, 2)]) # => "- {x: 1, \"y\": 2}\n"
+```
+
+`Oyl::Builder` writes events as given, with anchors, aliases, tags and
+styles. `scalar` writes text, quoting it only where plain text wouldn't
+read back as the same text, so use `write` for values:
+
+```crystal
+yaml = Oyl::Builder.build do |b|
+  b.document do
+    b.mapping do
+      b.scalar "base"
+      b.mapping(anchor: "b") do
+        b.scalar "a"
+        b.write 1
+      end
+      b.scalar "copy"
+      b.alias "b"
+    end
+  end
+end
+# base: &b
+#   a: 1
+# copy: *b
+```
+
 ## API
 
 ### Oyl
@@ -183,6 +259,8 @@ end
 |--------|---------|-------------|
 | `Oyl.parse(data, dialect: :yaml12)` | `Oyl::Any` | Parse a single YAML document |
 | `Oyl.parse_all(data, dialect: :yaml12)` | `Array(Oyl::Any)` | Parse all documents in a stream |
+| `Oyl.dump(value, style: :block, indent: 2)` | `String` | Write a value as a YAML document (also to an `IO`) |
+| `Oyl.dump_all(values, style: :block, indent: 2)` | `String` | Write each value as a document of one stream |
 
 ### Oyl::Any
 
@@ -204,6 +282,19 @@ end
 | `dig?(keys...)` | Non-raising dig |
 | `size` | Collection size |
 | `raw` | Underlying `Type` union value |
+| `to_yaml` | Write as a YAML document (also to an `IO`) |
+
+### Oyl::Builder
+
+| Method | Description |
+|--------|-------------|
+| `Builder.build(style:, indent:) { \|b\| }` | Yield a builder, return the YAML |
+| `document(explicit_start:, explicit_end:) { }` | A document around what the block writes |
+| `write(value)` | A value, written to read back the same |
+| `scalar(text, style:, tag:, anchor:)` | Text as given |
+| `sequence(style:, tag:, anchor:) { }` | A sequence of what the block writes |
+| `mapping(style:, tag:, anchor:) { }` | A mapping: a key, then its value |
+| `alias(anchor)` | An alias |
 
 ### Oyl::Nodes
 

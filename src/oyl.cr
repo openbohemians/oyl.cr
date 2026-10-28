@@ -6,9 +6,11 @@ require "./oyl/pull_parser"
 require "./oyl/nodes"
 require "./oyl/parse_context"
 require "./oyl/any"
+require "./oyl/builder"
+require "./oyl/to_oyl"
 
 module Oyl
-  VERSION = "0.3.0"
+  VERSION = "0.4.0"
 
   # Parses a YAML document and returns a `Oyl::Any`. Scalars are typed
   # by YAML 1.2's Core schema, or by *dialect*, and a document saying
@@ -42,6 +44,32 @@ module Oyl
         Oyl::Any.new(nil)
       else
         Oyl::Any.new(ctx, doc.nodes.first)
+      end
+    end
+  end
+
+  # Writes *value* as a YAML 1.2 document that `Oyl.parse` reads back as
+  # the same value, in any dialect (see `Oyl::Builder#write`).
+  #
+  # ```
+  # Oyl.dump({"name" => "oyl", "on" => "yes"}) # => "name: oyl\non: \"yes\"\n"
+  # ```
+  def self.dump(value, *, style : EmitStyle = :block, indent : Int32 = 2) : String
+    Builder.build(style: style, indent: indent) do |builder|
+      builder.document { builder.write value }
+    end
+  end
+
+  # :ditto:
+  def self.dump(value, io : IO, *, style : EmitStyle = :block, indent : Int32 = 2) : Nil
+    io << dump(value, style: style, indent: indent)
+  end
+
+  # Writes each of *values* as a document of one YAML stream.
+  def self.dump_all(values : Enumerable, *, style : EmitStyle = :block, indent : Int32 = 2) : String
+    Builder.build(style: style, indent: indent) do |builder|
+      values.each do |value|
+        builder.document { builder.write value }
       end
     end
   end

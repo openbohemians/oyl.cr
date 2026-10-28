@@ -33,4 +33,14 @@ module Oyl
     BLOCK
     FLOW
   end
+
+  # How `Oyl::Builder` lays out collections.
+  enum EmitStyle
+    # Indented, one entry per line.
+    BLOCK
+    # `{...}` and `[...]`.
+    FLOW
+    # Flow style without optional spaces.
+    MINIMAL
+  end
 end

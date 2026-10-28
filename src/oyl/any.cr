@@ -290,6 +290,21 @@ struct Oyl::Any
   def inspect(io : IO) : Nil
     raw.inspect(io)
   end
+
+  # Writes this value as a YAML document (see `Oyl.dump`).
+  def to_yaml(*, style : Oyl::EmitStyle = :block, indent : Int32 = 2) : String
+    Oyl.dump(self, style: style, indent: indent)
+  end
+
+  # :ditto:
+  def to_yaml(io : IO, *, style : Oyl::EmitStyle = :block, indent : Int32 = 2) : Nil
+    Oyl.dump(self, io, style: style, indent: indent)
+  end
+
+  # Writes this value with *builder* (see `Oyl::Builder#write`).
+  def to_oyl(builder : Oyl::Builder) : Nil
+    builder.write raw
+  end
 end
 
 class Object
