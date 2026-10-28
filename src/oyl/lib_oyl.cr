@@ -225,6 +225,12 @@ lib LibOyl
   fun parser_set_dialect = oyl_parser_set_dialect(p : Parser*, d : Dialect*) : Void
   fun parser_document_dialect = oyl_parser_document_dialect(p : Parser*) : Dialect*
 
+  # ── JSON ─────────────────────────────────────────────────
+
+  JSON_STRICT = 4_u32
+
+  fun parse_json = oyl_parse_json(p : Parser*, schema : Schema*, flags : LibC::UInt, json : Str*) : Status
+
   # ── Emitter ──────────────────────────────────────────────
 
   fun emitter_new = oyl_emitter_new(a : Arena*) : Emitter*

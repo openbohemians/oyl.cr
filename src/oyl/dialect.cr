@@ -18,7 +18,8 @@ module Oyl
     YAML11
     # go-yaml v2's types, as Kubernetes reads YAML: YAML 1.1's and `y`/`n`.
     # (Its merge order, where a `<<` overrides the keys written before
-    # it, isn't applied: merges here keep the keys written, as YAML's do.)
+    # it, is applied by `Oyl.yaml_to_json`, not yet by `Oyl.parse`, whose
+    # merges keep the keys written, as YAML's do.)
     GOYAML2
 
     # :nodoc:

@@ -121,7 +121,8 @@ data["production"]["database"].as_s # => "mydb"
 
 `Oyl.parse` applies `<<` merge keys, and the keys a mapping writes win
 over the ones it merges, wherever the `<<` is. (go-yaml v2 lets a merge
-override the keys written before it; `:goyaml2` doesn't copy that yet.)
+override the keys written before it; with `:goyaml2`, `Oyl.yaml_to_json`
+copies that, `Oyl.parse` doesn't yet.)
 
 ### AST (Nodes API)
 
@@ -251,6 +252,23 @@ end
 # copy: *b
 ```
 
+### YAML to JSON
+
+`Oyl.yaml_to_json` converts a YAML document to JSON in Oyl's C, with no
+Crystal values in between: scalars typed by the dialect, aliases
+expanded, `<<` merge keys applied, keys sorted. With `dialect: :goyaml2`
+the output is byte for byte what sigs.k8s.io/yaml's `YAMLToJSON` writes,
+as Kubernetes reads YAML:
+
+```crystal
+Oyl.yaml_to_json("b: yes\na: 0777\n")                    # => {"a":777,"b":"yes"}
+Oyl.yaml_to_json("b: yes\na: 0777\n", dialect: :goyaml2) # => {"a":511,"b":true}
+```
+
+A key set twice keeps its last value, or with `strict: true` raises
+`Oyl::ParseException`. `Oyl.yaml_to_json_all` converts every document of
+a stream.
+
 ## API
 
 ### Oyl
@@ -261,6 +279,8 @@ end
 | `Oyl.parse_all(data, dialect: :yaml12)` | `Array(Oyl::Any)` | Parse all documents in a stream |
 | `Oyl.dump(value, style: :block, indent: 2)` | `String` | Write a value as a YAML document (also to an `IO`) |
 | `Oyl.dump_all(values, style: :block, indent: 2)` | `String` | Write each value as a document of one stream |
+| `Oyl.yaml_to_json(data, dialect: :yaml12, strict: false)` | `String` | Convert the first document to JSON |
+| `Oyl.yaml_to_json_all(data, dialect: :yaml12, strict: false)` | `Array(String)` | Convert each document to JSON |
 
 ### Oyl::Any
 

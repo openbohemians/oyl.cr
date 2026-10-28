@@ -8,6 +8,7 @@ require "./oyl/parse_context"
 require "./oyl/any"
 require "./oyl/builder"
 require "./oyl/to_oyl"
+require "./oyl/json"
 
 module Oyl
   VERSION = "0.4.0"
