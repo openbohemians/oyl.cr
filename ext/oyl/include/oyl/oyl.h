@@ -39,7 +39,7 @@ extern "C" {
 /* ── Version ─────────────────────────────────────────────── */
 
 #define OYL_VERSION_MAJOR 1
-#define OYL_VERSION_MINOR 2
+#define OYL_VERSION_MINOR 3
 #define OYL_VERSION_PATCH 0
 
 /* ── String view (zero-copy reference into source) ───────── */

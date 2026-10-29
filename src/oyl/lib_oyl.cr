@@ -1,4 +1,9 @@
-@[Link(ldflags: "#{__DIR__}/../../ext/oyl/build/liboyl.a")]
+# ext/build.cr builds the library (the shard's postinstall)
+{% if flag?(:win32) %}
+  @[Link(ldflags: "#{__DIR__}/../../ext/oyl/build/oyl.lib")]
+{% else %}
+  @[Link(ldflags: "#{__DIR__}/../../ext/oyl/build/liboyl.a")]
+{% end %}
 lib LibOyl
   # ── String view ──────────────────────────────────────────
 

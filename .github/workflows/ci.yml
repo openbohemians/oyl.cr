@@ -15,6 +15,8 @@ jobs:
             crystal: latest
           - os: macos-latest
             crystal: latest
+          - os: windows-latest
+            crystal: latest
           # the oldest Crystal that shard.yml allows
           - os: ubuntu-latest
             crystal: 1.19.1
@@ -24,7 +26,18 @@ jobs:
       - uses: crystal-lang/install-crystal@v1
         with:
           crystal: ${{ matrix.crystal }}
-      - name: Build the C library
-        run: make -C ext
+      - name: Build the C library (the shard's postinstall)
+        run: crystal run ext/build.cr
       - name: Spec
         run: crystal spec
+      - name: Build with no cl on PATH (as outside a Visual Studio prompt)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-Command cl -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Source
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Microsoft Visual Studio' }) -join ';'
+          if (Get-Command cl -ErrorAction SilentlyContinue) { throw "cl is still on PATH" }
+          Remove-Item -Recurse ext/oyl/build
+          crystal run ext/build.cr
+          if (!(Test-Path ext/oyl/build/oyl.lib)) { throw "no oyl.lib" }
+          crystal spec

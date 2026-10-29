@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 #include <emmintrin.h>   /* part of x86-64: no runtime check */
 #endif
 
@@ -330,7 +330,7 @@ static size_t escaped_char(const char *s, size_t len, size_t i, uint32_t *code) 
     return 0;
 }
 
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 #define SPLAT(x) _mm_set1_epi8((char)(x))
 #define EQ(a, b) _mm_cmpeq_epi8(a, b)
 #define OR(a, b) _mm_or_si128(a, b)
@@ -379,14 +379,14 @@ static inline unsigned scalar_classes_bytes(const char *s, size_t from, size_t l
     return f;
 }
 
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 /* The first character escaped_char() finds in s[from..len): its offset,
  * or len. 16 starting bytes at a time, each with the two after it */
 static size_t next_escaped_char(const char *s, size_t from, size_t len) {
     size_t i = from;
     for (; i + 18 <= len; i += 16) {
         int m = escaped_starts(s + i);
-        if (m) return i + (size_t)__builtin_ctz((unsigned)m);
+        if (m) return i + (size_t)oyl_ctz32((uint32_t)m);
     }
     uint32_t code;
     for (; i < len; i++)
@@ -434,7 +434,7 @@ NOINLINE unsigned scalar_classes_long(const char *s, size_t len) {
 /* The classes of all of s, with SC_ESC and without SC_UNI (which marks
  * bytes, for escaped_char) */
 static unsigned scalar_classes(const char *s, size_t len) {
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
     if (len >= SC_SIMD_MIN) return scalar_classes_long(s, len) & ~(unsigned)SC_UNI;
 #endif
     return scalar_classes_bytes(s, 0, len) & ~(unsigned)SC_UNI;
@@ -626,7 +626,7 @@ NOINLINE oyl_status emit_double_quoted(oyl_emitter *e, const char *s, size_t len
         if ((st = buf_ensure(e, 4 * n + 2)) != OYL_OK) break;
         char *o = e->buf + e->len;
         size_t end = i + n;
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
         /* 16 bytes at a time, each block up to the first byte that needs
          * an escape (an escaped character's two bytes after read too) */
         while (i + 16 <= end && i + 18 <= len) {
@@ -640,7 +640,7 @@ NOINLINE oyl_status emit_double_quoted(oyl_emitter *e, const char *s, size_t len
                 i += 16;
                 continue;
             }
-            size_t k = (size_t)__builtin_ctz((unsigned)m);
+            size_t k = (size_t)oyl_ctz32((uint32_t)m);
             memcpy(o, s + i, k);
             o += k;
             i += k;

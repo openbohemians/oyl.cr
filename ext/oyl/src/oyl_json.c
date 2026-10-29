@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 #  include <emmintrin.h>
 #endif
 
@@ -375,7 +375,7 @@ static bool put_json_string(buffer *b, const char *str, size_t n) {
     size_t i = 0;
     while (i < n) {
         size_t run = i;
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
         /* 16 bytes at a time while none needs escaping or is past ASCII
          * (a signed compare with 0x20 catches control characters and
          * bytes from 0x80 alike) */
@@ -390,7 +390,7 @@ static bool put_json_string(buffer *b, const char *str, size_t n) {
                                                     _mm_or_si128(_mm_cmpeq_epi8(v, gt), _mm_cmpeq_epi8(v, amp))));
             int mask = _mm_movemask_epi8(hit);
             if (mask) {
-                run += (size_t)__builtin_ctz((unsigned)mask);
+                run += (size_t)oyl_ctz32((uint32_t)mask);
                 break;
             }
             run += 16;

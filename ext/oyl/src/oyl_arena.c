@@ -15,6 +15,21 @@
 #include <stdio.h>
 #include <errno.h>
 
+#if defined(_WIN32)
+/* the C runtime's own names, declared whichever C standard is asked for */
+typedef struct _stat64 file_stat;
+#  define stat_file(f, st) _fstat64(_fileno(f), (st))
+#  ifndef S_ISDIR
+#    define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
+#  endif
+#  ifndef S_ISREG
+#    define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#  endif
+#else
+typedef struct stat file_stat;
+#  define stat_file(f, st) fstat(fileno(f), (st))
+#endif
+
 /* ── Block ───────────────────────────────────────────────── */
 
 typedef struct oyl_block {
@@ -153,8 +168,8 @@ oyl_str oyl_read_file(const char *path, oyl_arena *a) {
     FILE *f = fopen(path, "rb");
     if (!f) return (oyl_str){NULL, 0};
 
-    struct stat st;
-    if (fstat(fileno(f), &st) != 0) { fclose(f); return (oyl_str){NULL, 0}; }
+    file_stat st;
+    if (stat_file(f, &st) != 0) { fclose(f); return (oyl_str){NULL, 0}; }
     if (S_ISDIR(st.st_mode)) { fclose(f); errno = EISDIR; return (oyl_str){NULL, 0}; }
 
     /* start from the reported size (+1 so EOF is seen without growing) */

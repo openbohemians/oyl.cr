@@ -11,6 +11,7 @@
 #define OYL_INTERNAL_H
 
 #include "oyl/oyl.h"
+#include "oyl_port.h"
 #include <math.h>
 #include <string.h>
 
@@ -310,6 +311,42 @@ void oyl_scanner_set_syntax(oyl_scanner *s, unsigned syntax, oyl_warn_state *w);
  * checkpoint at a document start). */
 bool oyl_scanner_copy(oyl_scanner *dst, const oyl_scanner *src);
 
+/* The flow fast path: a flow collection read whole, its opening bracket the
+ * last token scanned (`open`), when it is on one line and made only of
+ * plain words and numbers, double-quoted text without escapes, and nested
+ * collections, as JSON is. oyl_scan_flow_fast writes its events to `out`
+ * (at most `cap`), exactly as the parser would make them from its tokens,
+ * and returns how many, changing nothing, or -1 if it isn't such a
+ * collection. oyl_scan_flow_commit then moves the scanner past it, as
+ * scanning its tokens would have. */
+typedef struct {
+    size_t    close;      /* offset of the closing bracket */
+    int       depth;      /* deepest nesting, the collection itself 1 */
+    bool      nested;     /* a collection opens inside it ... */
+    bool      last_value; /* ... the last of them a mapping's value */
+    ptrdiff_t last_col;   /* 0-based column of its last scalar, or -1 */
+} oyl_flow_fast;
+int oyl_scan_flow_fast(const oyl_scanner *s, const oyl_token *open, oyl_event *out, int cap,
+                       oyl_flow_fast *ff);
+void oyl_scan_flow_commit(oyl_scanner *s, const oyl_flow_fast *ff);
+
+/* The block fast path: plain values in a block mapping at indentation
+ * `indent` (the scanner's current one), read from the bytes, with the
+ * cursor just past a key's ':' (OYL_BF_VALUE), or past a plain key at that
+ * indentation (OYL_BF_KEY, the token `key`: its ':' and value), or at a
+ * line break (OYL_BF_LINES); then whole lines "key: value" at that
+ * indentation that follow. Only plain keys on one line, and plain values
+ * that end their line (or at a comment) where the next line is indented
+ * no more than the mapping: their events are written to `out` (at most
+ * `cap`), as the parser makes them from the tokens, and the scanner is
+ * moved past them, as scanning those tokens would have. Returns how many
+ * events, 0 if none (nothing changed); `colon` gets the last key's ':',
+ * if a key was taken, and `full` whether it stopped only for room, before
+ * a line it would take. */
+typedef enum { OYL_BF_VALUE, OYL_BF_KEY, OYL_BF_LINES } oyl_block_fast_mode;
+int oyl_scan_block_fast(oyl_scanner *s, oyl_block_fast_mode mode, const oyl_token *key,
+                        ptrdiff_t indent, oyl_event *out, int cap, oyl_mark *colon, bool *full);
+
 /* ── Tags, for the parser and the emitter ────────────────── */
 
 /* A URI character (YAML's ns-uri-char, but for %-escapes) */
@@ -439,20 +476,5 @@ static inline oyl_str oyl_tree_text(const oyl_tree *t, const oyl_node *n) {
     return n->flags & OYL_NODE_POOLED ? (oyl_str){ t->pool + n->text, n->len }
                                       : (oyl_str){ t->input + t->base + n->text, n->len };
 }
-
-/* For small helpers on the per-token path that GCC may otherwise decline
- * to inline once they grow a little. */
-#if defined(__GNUC__) || defined(__clang__)
-#  define ALWAYS_INLINE static inline __attribute__((always_inline))
-#else
-#  define ALWAYS_INLINE static inline
-#endif
-
-/* For cold paths that would otherwise be inlined into a hot caller. */
-#if defined(__GNUC__) || defined(__clang__)
-#  define NOINLINE static __attribute__((noinline))
-#else
-#  define NOINLINE static
-#endif
 
 #endif /* OYL_INTERNAL_H */

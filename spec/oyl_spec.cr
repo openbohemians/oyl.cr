@@ -2,7 +2,7 @@ require "./spec_helper"
 
 describe Oyl do
   it "has a version" do
-    Oyl::VERSION.should eq("0.4.0")
+    Oyl::VERSION.should eq("0.5.0")
   end
 
   it "parses a simple mapping" do

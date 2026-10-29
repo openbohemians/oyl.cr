@@ -15,9 +15,11 @@ dependencies:
 ```
 
 Then run `shards install`. The C library, vendored in `ext/oyl`, is built
-by the `postinstall` script.
+by the `postinstall` script, `crystal run ext/build.cr`.
 
-Requires a C11 compiler (GCC or Clang).
+Requires a C11 compiler: GCC or Clang, or on Windows MSVC (Visual Studio
+or its Build Tools), which the script finds when `cl` isn't on `PATH`.
+Tested on Linux, macOS and Windows.
 
 ## Quick Start
 
@@ -337,8 +339,8 @@ commit they came from. To vendor another version, from a checkout of
 
 ```sh
 make -C ext sync OYL=path/to/oyl              # the checkout's committed HEAD
-make -C ext sync OYL=path/to/oyl REF=v1.2.0   # or a release tag
-make -C ext && crystal spec
+make -C ext sync OYL=path/to/oyl REF=v1.3.0   # or a release tag
+crystal run ext/build.cr && crystal spec
 ```
 
 ## License

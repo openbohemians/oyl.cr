@@ -11,7 +11,7 @@ require "./oyl/to_oyl"
 require "./oyl/json"
 
 module Oyl
-  VERSION = "0.4.0"
+  VERSION = "0.5.0"
 
   # Parses a YAML document and returns a `Oyl::Any`. Scalars are typed
   # by YAML 1.2's Core schema, or by *dialect*, and a document saying

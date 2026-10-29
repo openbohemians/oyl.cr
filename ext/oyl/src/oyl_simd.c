@@ -3,15 +3,16 @@
  *
  * The SSE4.2 implementations carry a target("sse4.2") attribute, so their
  * intrinsics compile regardless of the global -march flags the translation
- * unit is built with. A constructor selects them at load time when the CPU
+ * unit is built with (MSVC compiles any intrinsic, and needs no
+ * attribute). A constructor selects them at load time when the CPU
  * reports SSE4.2 support, and falls back to the portable scalar code
  * otherwise. The upshot: one binary, compiled with a portable baseline (no
  * -march=native), still uses SIMD on capable hardware and never executes an
  * illegal instruction on older CPUs — exactly what a distro package needs.
  *
  * Dispatch is via function pointers set in a load-time constructor (rather
- * than an ifunc resolver) so the same mechanism works on ELF and on macOS,
- * where STT_GNU_IFUNC is unavailable.
+ * than an ifunc resolver) so the same mechanism works on ELF, on macOS,
+ * where STT_GNU_IFUNC is unavailable, and with MSVC (oyl_port.h).
  */
 
 #include "oyl_simd.h"
@@ -19,9 +20,18 @@
 
 #include <stdint.h>
 
-#if defined(__x86_64__) || defined(__i386__)
+/* x86, with a constructor to choose SSE4.2 at load (oyl_port.h); without
+ * one, the scalar code runs */
+#if (defined(__x86_64__) || defined(__i386__) || \
+     (defined(_M_X64) && !defined(_M_ARM64EC)) || defined(_M_IX86)) && \
+    defined(OYL_CONSTRUCTOR)
 #  define OYL_X86 1
 #  include <nmmintrin.h>
+#  if defined(__GNUC__) || defined(__clang__)
+#    define TARGET_SSE42 __attribute__((target("sse4.2")))
+#  else
+#    define TARGET_SSE42
+#  endif
 /* PCMPESTRI mode: unsigned bytes, range compare, least-significant match.
  * Defined as a macro (not a const int) because _mm_cmpestri requires its mode
  * argument to be a literal constant expression under Clang. */
@@ -67,7 +77,7 @@ static size_t scan_to_break_scalar(const char *buf, size_t len) {
 
 #if defined(OYL_X86)
 
-__attribute__((target("sse4.2")))
+TARGET_SSE42
 static size_t scan_plain_scalar_sse42(const char *buf, size_t len) {
     size_t i = 0;
 
@@ -98,7 +108,7 @@ static size_t scan_plain_scalar_sse42(const char *buf, size_t len) {
     return len;
 }
 
-__attribute__((target("sse4.2")))
+TARGET_SSE42
 static size_t skip_blanks_sse42(const char *buf, size_t len) {
     size_t i = 0;
 
@@ -113,7 +123,7 @@ static size_t skip_blanks_sse42(const char *buf, size_t len) {
         int mask = _mm_movemask_epi8(is_blank);
         if (mask != 0xFFFF) {
             /* not all blanks — find first non-blank */
-            return i + (size_t)__builtin_ctz((unsigned)~mask);
+            return i + (size_t)oyl_ctz32((uint32_t)~mask);
         }
     }
 
@@ -123,7 +133,7 @@ static size_t skip_blanks_sse42(const char *buf, size_t len) {
     return len;
 }
 
-__attribute__((target("sse4.2")))
+TARGET_SSE42
 static size_t find_break_sse42(const char *buf, size_t len) {
     size_t i = 0;
 
@@ -135,7 +145,7 @@ static size_t find_break_sse42(const char *buf, size_t len) {
         __m128i eq_nl = _mm_cmpeq_epi8(chunk, nl);
         __m128i eq_cr = _mm_cmpeq_epi8(chunk, cr);
         int mask = _mm_movemask_epi8(_mm_or_si128(eq_nl, eq_cr));
-        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+        if (mask) return i + (size_t)oyl_ctz32((uint32_t)mask);
     }
 
     for (; i < len; i++) {
@@ -144,7 +154,7 @@ static size_t find_break_sse42(const char *buf, size_t len) {
     return len;
 }
 
-__attribute__((target("sse4.2")))
+TARGET_SSE42
 static size_t scan_to_break_sse42(const char *buf, size_t len) {
     size_t i = 0;
 
@@ -159,7 +169,7 @@ static size_t scan_to_break_sse42(const char *buf, size_t len) {
         __m128i stop = _mm_or_si128(_mm_andnot_si128(_mm_cmpeq_epi8(chunk, tab), low),
                                     _mm_cmpeq_epi8(chunk, del));
         int mask = _mm_movemask_epi8(stop);
-        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+        if (mask) return i + (size_t)oyl_ctz32((uint32_t)mask);
     }
 
     for (; i < len; i++) {
@@ -182,18 +192,27 @@ static size_t (*scan_to_break_impl)(const char *, size_t) =
 static size_t (*find_break_impl)(const char *, size_t) =
     find_break_scalar;
 
-__attribute__((constructor))
-static void oyl_simd_init(void) {
 #if defined(OYL_X86)
+static bool cpu_has_sse42(void) {
+#  if defined(_MSC_VER)
+    int r[4];
+    __cpuid(r, 1);
+    return (r[2] >> 20) & 1;   /* ECX bit 20 */
+#  else
     __builtin_cpu_init();
-    if (__builtin_cpu_supports("sse4.2")) {
+    return __builtin_cpu_supports("sse4.2");
+#  endif
+}
+
+OYL_CONSTRUCTOR(oyl_simd_init) {
+    if (cpu_has_sse42()) {
         scan_plain_scalar_impl = scan_plain_scalar_sse42;
         skip_blanks_impl       = skip_blanks_sse42;
         scan_to_break_impl     = scan_to_break_sse42;
         find_break_impl        = find_break_sse42;
     }
-#endif
 }
+#endif
 
 size_t oyl_scan_plain_scalar(const char *buf, size_t len) {
     return scan_plain_scalar_impl(buf, len);

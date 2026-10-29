@@ -1,11 +1,12 @@
 # Builds Oyl, the C library, from the sources vendored in oyl/ (shards
 # doesn't fetch git submodules) into oyl/build/liboyl.a, with the flags
-# Oyl's own Makefile uses.
+# Oyl's own Makefile uses. The shard's postinstall is build.cr, which does
+# the same and also builds with MSVC on Windows.
 #
-#   make -C ext                          build (the shard's postinstall)
+#   make -C ext                          build on Unix
 #   make -C ext sync OYL=path/to/oyl     vendor another version: the
 #                                        checkout's committed HEAD,
-#        ... sync OYL=path/to/oyl REF=v1.2.0   or a release tag
+#        ... sync OYL=path/to/oyl REF=v1.3.0   or a release tag
 
 CC ?= cc
 AR ?= ar

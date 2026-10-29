@@ -11,6 +11,7 @@
 #ifndef OYL_SIMD_H
 #define OYL_SIMD_H
 
+#include "oyl_port.h"
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -36,14 +37,14 @@ size_t oyl_find_break(const char *buf, size_t len);
 /* Offset of the first byte in buf[0..len) equal to a, b, c or d, or `len`.
  * Inline because quoted scalars are usually short. SSE2 is part of
  * x86-64, so no runtime dispatch. */
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 #include <emmintrin.h>
 #endif
 
 static inline size_t oyl_find_any4(const char *buf, size_t len,
                                    char a, char b, char c, char d) {
     size_t i = 0;
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
     const __m128i va = _mm_set1_epi8(a), vb = _mm_set1_epi8(b);
     const __m128i vc = _mm_set1_epi8(c), vd = _mm_set1_epi8(d);
     for (; i + 16 <= len; i += 16) {
@@ -51,7 +52,7 @@ static inline size_t oyl_find_any4(const char *buf, size_t len,
         __m128i m = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, va), _mm_cmpeq_epi8(v, vb)),
                                  _mm_or_si128(_mm_cmpeq_epi8(v, vc), _mm_cmpeq_epi8(v, vd)));
         int mask = _mm_movemask_epi8(m);
-        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+        if (mask) return i + (size_t)oyl_ctz32((uint32_t)mask);
     }
 #endif
     for (; i < len; i++) {
@@ -71,7 +72,7 @@ static inline bool oyl_is_control(unsigned char c) { return (c < 0x20 && c != '\
  * hold), or `len`: where a run of a quoted scalar's text ends */
 static inline size_t oyl_find_in_quotes(const char *buf, size_t len, char a, char b) {
     size_t i = 0;
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
     const __m128i va = _mm_set1_epi8(a), vb = _mm_set1_epi8(b);
     const __m128i c1f = _mm_set1_epi8(0x1F), tab = _mm_set1_epi8('\t');
     for (; i + 16 <= len; i += 16) {
@@ -79,7 +80,7 @@ static inline size_t oyl_find_in_quotes(const char *buf, size_t len, char a, cha
         __m128i low = _mm_andnot_si128(_mm_cmpeq_epi8(v, tab), _mm_cmpeq_epi8(_mm_min_epu8(v, c1f), v));
         __m128i m = _mm_or_si128(_mm_or_si128(_mm_cmpeq_epi8(v, va), _mm_cmpeq_epi8(v, vb)), low);
         int mask = _mm_movemask_epi8(m);
-        if (mask) return i + (size_t)__builtin_ctz((unsigned)mask);
+        if (mask) return i + (size_t)oyl_ctz32((uint32_t)mask);
     }
 #endif
     for (; i < len; i++) {
@@ -117,7 +118,7 @@ static inline size_t oyl_find_any4_short(const char *buf, size_t len,
  * < \n \r. Inline, since it runs once per 64 input bytes in a hot loop; SSE2
  * is part of x86-64, so this needs no runtime dispatch. */
 
-#if defined(__SSE2__)
+#if defined(OYL_SSE2)
 #include <emmintrin.h>
 
 static inline uint64_t oyl_flow_mask16(__m128i v) {
