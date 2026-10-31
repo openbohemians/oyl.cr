@@ -219,7 +219,7 @@ static void neighbor(const char *digits, int n, int dir, char *out, int *e) {
 /* The shortest decimal digits that read back as `a` (> 0, finite), as Go's
  * strconv finds them: the closest of that length. Returns their count;
  * `a` = d1.d2... × 10^*e. Under `single`, for a's float32. */
-static int shortest_digits(double a, bool single, char *digits, int *e) {
+int oyl_shortest_digits(double a, bool single, char *digits, int *e) {
     double x = single ? (double)(float)a : a;
     *e = 0;
     for (int n = 1; n <= 17; n++) {
@@ -297,7 +297,7 @@ static bool put_json_float(buffer *b, double f) {
     char d[24];
     int e;
     double a = fabs(f);
-    int n = shortest_digits(a, false, d, &e);
+    int n = oyl_shortest_digits(a, false, d, &e);
     if (f < 0 && !buf_putc(b, '-')) return false;
     if (a < 1e-6 || a >= 1e21) return put_exponent(b, d, n, e, true);
     return put_fixed(b, d, n, e);
@@ -312,7 +312,7 @@ static bool put_float_key(buffer *b, double f) {
     if (g == 0) return buf_puts(b, signbit(g) ? "-0" : "0");
     char d[24];
     int e;
-    int n = shortest_digits(fabs((double)g), true, d, &e);
+    int n = oyl_shortest_digits(fabs((double)g), true, d, &e);
     if (g < 0 && !buf_putc(b, '-')) return false;
     if (e < -4 || e >= 6) return put_exponent(b, d, n, e, false);
     return put_fixed(b, d, n, e);

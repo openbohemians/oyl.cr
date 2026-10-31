@@ -298,6 +298,17 @@ static inline int oyl_key_cmp(const oyl_key *a, const oyl_key *b) {
 /* Report a warning from parsing, once (see oyl_warn_state) */
 void oyl_warn(oyl_warn_state *w, oyl_warning code, oyl_mark mark, const char *msg);
 
+/* The messages of the scanner's OYL_WARN_LENIENCY warnings: \' in double
+ * quotes (at the backslash), a block scalar ending the input without a
+ * line break (at its | or >), a line not indented past its block (at the
+ * line's start) */
+extern const char oyl_msg_squote_escape[], oyl_msg_eof_no_break[], oyl_msg_flow_indent[];
+
+/* The shortest decimal digits that read back as `a` (> 0, finite), the
+ * closest of that length (oyl_json.c): returns their count, `a` being
+ * d1.d2... × 10^*e. Under `single`, for a's float32. */
+int oyl_shortest_digits(double a, bool single, char *digits, int *e);
+
 /* ── Scanner ─────────────────────────────────────────────── */
 
 /* Scan the next token into caller-provided storage. oyl_scan_next() wraps
@@ -397,7 +408,7 @@ bool oyl_emitter_has_directive(const oyl_emitter *e, oyl_str handle);
  * kept, and every later call returns it */
 oyl_status oyl_emitter_fail(oyl_emitter *e, oyl_status st);
 
-/* ── Parser, for oyl_json.c and oyl_tree.c ──────────────────────────────── */
+/* ── Parser, for oyl_json.c, oyl_tree.c and oyl_upgrade.c ─────────────── */
 
 /* Report an error found after parsing (a converter's), as parse errors
  * are: oyl_parser_error() and oyl_parser_error_mark() return it, and
@@ -410,6 +421,10 @@ const char       *oyl_parser_input(const oyl_parser *p, size_t *len);
 bool              oyl_parser_owns_dialect(const oyl_parser *p, const oyl_dialect *d);
 int               oyl_parser_depth_limit(const oyl_parser *p);   /* 0: none */
 const oyl_schema *oyl_parser_schema(const oyl_parser *p);       /* NULL: none */
+/* The default dialect (oyl_parser_set_dialect's, else YAML 1.2's), and
+ * the warning callback, for oyl_upgrade.c */
+const oyl_dialect *oyl_parser_default_dialect(oyl_parser *p);
+void              oyl_parser_get_warn(const oyl_parser *p, oyl_warn_fn *fn, void **user);
 /* Report a warning found after parsing (no re-reading to guard against) */
 void              oyl_parser_warn(oyl_parser *p, oyl_warning code, oyl_mark mark,
                                   const char *msg);

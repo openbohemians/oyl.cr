@@ -551,8 +551,14 @@ enum {
     OYL_SYNTAX_YAML11_ONLY   = 1 << 2,  /**< %YAML other than 1.1 is an error, in the
                                              default dialect for every document but one
                                              choosing a registered dialect (go-yaml v2) */
+    OYL_SYNTAX_FLOW_INDENT   = 1 << 3,  /**< a quoted scalar's or flow collection's
+                                             later lines needn't be indented past the
+                                             block it sits in, and a tab may indent
+                                             them: [a,\nb] (libyaml, so PyYAML and
+                                             go-yaml v2) */
     /** go-yaml v2's */
-    OYL_SYNTAX_GOYAML2 = OYL_SYNTAX_SQUOTE_ESCAPE | OYL_SYNTAX_EOF_NO_BREAK | OYL_SYNTAX_YAML11_ONLY,
+    OYL_SYNTAX_GOYAML2 = OYL_SYNTAX_SQUOTE_ESCAPE | OYL_SYNTAX_EOF_NO_BREAK | OYL_SYNTAX_YAML11_ONLY
+                         | OYL_SYNTAX_FLOW_INDENT,
 };
 
 /** How << merge keys combine with the keys written in a mapping. */
@@ -585,12 +591,13 @@ OYL_API const oyl_dialect *oyl_dialect_yaml12(void);
  *  them, by tag and value, where Python's == also makes 1, 1.0 and true
  *  one key, and two timestamps of one instant written otherwise one key;
  *  and a base 60 float of more than 14 parts may differ in its last bits.
- *  The syntax is YAML 1.2's, but a block scalar ending the input gets no
- *  final line feed, as in libyaml. Malformed YAML that libyaml lets
- *  through stays an error, such as a comment touching a closing quote or
- *  bracket or a block scalar's header ("a"#c, [a]#c, |#c), or a quoted
- *  scalar or flow collection whose later lines aren't indented past the
- *  block it sits in. */
+ *  The syntax is YAML 1.2's, with two of libyaml's leniencies: a block
+ *  scalar ending the input gets no final line feed, and a quoted scalar's
+ *  or flow collection's later lines needn't be indented past the block it
+ *  sits in (OYL_SYNTAX_EOF_NO_BREAK, OYL_SYNTAX_FLOW_INDENT). Other
+ *  malformed YAML that libyaml lets through stays an error, such as a
+ *  comment touching a closing quote or bracket or a block scalar's header
+ *  ("a"#c, [a]#c, |#c). */
 OYL_API const oyl_dialect *oyl_dialect_yaml11(void);
 /** go-yaml v2, as Kubernetes reads YAML: its types, its syntax
  *  leniencies (OYL_SYNTAX_GOYAML2), and its merge order. A dialect of
@@ -858,6 +865,66 @@ enum {
  *  OYL_ERR_INPUT if @p map isn't a mapping. */
 OYL_API oyl_status oyl_node_entries(const oyl_tree *t, uint32_t map, unsigned flags,
                                     oyl_arena *a, const oyl_pair **pairs, size_t *n);
+
+/* ── Upgrade: a YAML 1.1 file made YAML 1.2 in place ─────── */
+
+/** What oyl_upgrade() fixed, or found and left. */
+typedef enum {
+    OYL_FIX_SCALAR = 1,  /**< a scalar YAML 1.2 reads otherwise */
+    OYL_FIX_DIRECTIVE,   /**< %YAML 1.1, removed */
+    OYL_FIX_ESCAPE,      /**< \' in double quotes (go-yaml v2's), the backslash removed */
+    OYL_FIX_CHOMP,       /**< a block scalar ending the input without a line break */
+    OYL_FIX_MERGE,       /**< a key go-yaml v2's merge overrides, commented out */
+    OYL_FIX_INDENT,      /**< a quoted scalar's or flow collection's line, indented */
+} oyl_fix_kind;
+
+/** One change, or one difference left as it was. */
+typedef struct {
+    oyl_fix_kind kind;
+    oyl_mark     mark;     /**< where, in the input */
+    oyl_str      before;   /**< the input's text there */
+    oyl_str      after;    /**< what replaced it (empty if removed, or left) */
+    bool         fixed;    /**< false: reported only, the input left as it was */
+    const char  *message;  /**< what each reader reads, and what was done */
+} oyl_fix;
+
+/** oyl_upgrade() options. Values keep the source's value and keys their
+ *  text (as YAML 1.2 reads it) unless these say otherwise. */
+enum {
+    OYL_UPGRADE_KEYS_KEEP_VALUE  = 1 << 0,  /**< keys keep the source's value too */
+    OYL_UPGRADE_VALUES_KEEP_TEXT = 1 << 1,  /**< values keep YAML 1.2's reading too */
+    OYL_UPGRADE_TIMESTAMPS_TEXT  = 1 << 2,  /**< a timestamp's value is its text, as
+                                                 go-yaml v2 hands it to programs (implied
+                                                 by oyl_dialect_goyaml2()) */
+};
+
+/** Make the rest of @p p's stream, a YAML 1.1 file, read the same in YAML
+ *  1.2, rewriting only what a 1.2 reader would read otherwise and keeping
+ *  every other byte (comments, layout, quoting, key order). The parser's
+ *  default dialect names the file's reader (oyl_dialect_yaml11() for
+ *  PyYAML, oyl_dialect_goyaml2(), or a program's): afterwards the file
+ *  reads the same in it and in YAML 1.2. Left at YAML 1.2, the default,
+ *  the reader is unknown: what PyYAML and go-yaml v2 read alike is fixed,
+ *  what they read otherwise is reported, unless the file rules one out
+ *  (\' is an error to PyYAML, %YAML 1.2 to go-yaml v2). A document
+ *  choosing YAML 1.2 by its directives is left alone.
+ *
+ *  A scalar is rewritten in a spelling every reader reads alike: true,
+ *  !!int 0o755 for 0755, "on", 1.0e+3, !!timestamp 2001-12-14. %YAML 1.1
+ *  is removed, \' in double quotes loses its backslash, a block scalar
+ *  ending the input without a line break gets the strip indicator, a
+ *  quoted scalar's or flow collection's line not indented past its block
+ *  is indented, and a key go-yaml v2's merge overrides is commented out.
+ *  Each is in @p fixes, with what can't be fixed (as two keys made equal),
+ *  left as it was. The output is then read in every reader and YAML 1.2:
+ *  if any scalar reads otherwise than decided, OYL_ERR_PARSE, never a
+ *  file that reads otherwise.
+ *
+ *  @p out and @p fixes are in the parser's arena. Errors are reported as
+ *  parse errors (oyl_parser_error(), oyl_parser_error_mark()); the
+ *  parser's warning callback still hears its warnings. */
+OYL_API oyl_status oyl_upgrade(oyl_parser *p, unsigned flags, oyl_str *out,
+                               const oyl_fix **fixes, size_t *nfixes);
 
 /* ── Emitter ─────────────────────────────────────────────── */
 

@@ -1139,11 +1139,13 @@ static oyl_status parse_block_mapping(oyl_parser *p, ptrdiff_t map_indent) {
             attach_props(p, &evt);
             consume_token(p);
 
-            /* peek for : */
+            /* peek for : on the key's line (an implicit key is one line;
+             * "b\n: c" is an error, a ':' starting a line being an empty
+             * key's) */
             st = peek_token(p);
             if (st != OYL_OK) return st;
 
-            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE) {
+            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE && p->current.start.line == evt.start.line) {
                 /* confirmed key */
                 enqueue(p, &evt);
                 st = parse_block_map_value(p, map_indent);
@@ -1167,7 +1169,7 @@ static oyl_status parse_block_mapping(oyl_parser *p, ptrdiff_t map_indent) {
             st = peek_token(p);
             if (st != OYL_OK) return st;
 
-            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE) {
+            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE && p->current.start.line == evt.start.line) {
                 enqueue(p, &evt);
                 st = parse_block_map_value(p, map_indent);
                 if (st != OYL_OK) return st;
@@ -1288,6 +1290,12 @@ static oyl_status parse_block_node(oyl_parser *p) {
      * node's props be consumed when we recurse into parsing. */
     if ((tt == OYL_TOK_ANCHOR || tt == OYL_TOK_TAG) &&
         (p->has_anchor || p->has_tag)) {
+        /* consume_props took one of each: another on their line is a
+         * second anchor or tag of one node ("! !!null", "&a &b"), never a
+         * later node's (Oyl gave it to a block sequence's first entry
+         * until 2026-10-30; found by fuzzing oyl_upgrade) */
+        if (p->current.start.line == p->props_line)
+            PARSE_ERROR(p, "a node cannot have two anchors or two tags");
         /* Save outer node's props */
         oyl_str saved_anchor = p->pending_anchor;
         oyl_str saved_tag = p->pending_tag;
@@ -1322,6 +1330,18 @@ static oyl_status parse_block_node(oyl_parser *p) {
         if (st != OYL_OK) return st;
         tt = tok_type(p);
         col = tok_col(p);
+
+        /* the inner props start a nested key only if what follows is
+         * indented past the enclosing block; otherwise both sets are this
+         * node's, an error when they conflict ("a: !x\n !y\nb: 1"; Oyl
+         * nested b in a until 2026-10-30, found by fuzzing oyl_upgrade) */
+        {
+            ptrdiff_t node_col = p->current.start.line == inner_line ? inner_col : col;
+            const ctx_entry *enc = top_ctx(p);
+            if (node_col <= (enc ? enc->indent : -1) &&
+                ((inner_has_anchor && p->has_anchor) || (inner_has_tag && p->has_tag)))
+                PARSE_ERROR(p, "a node cannot have two anchors or two tags");
+        }
 
         /* Now handle the node type with inner props deferred */
         if (tt == OYL_TOK_SCALAR) {
@@ -4731,12 +4751,13 @@ ALWAYS_INLINE oyl_status parser_step(oyl_parser *p) {
                 p->input[ke] == ':' && bf_value_may_follow(p, ke + 1) &&
                 inc_block_fast(p, OYL_BF_KEY))
                 return OYL_OK;
+            size_t key_line = p->current.start.line;
             fill_scalar(inc_next(p), &p->current);
             consume_token(p);
 
-            /* must be followed by ':' */
+            /* must be followed by ':' on its line */
             peek_token(p);
-            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE) {
+            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE && p->current.start.line == key_line) {
                 inc_commit(p);
                 p->state = ST_BLOCK_MAP_VALUE;
             } else {
@@ -4745,11 +4766,12 @@ ALWAYS_INLINE oyl_status parser_step(oyl_parser *p) {
                 p->state = ST_EAGER_DRAIN;
             }
         } else if (tt == OYL_TOK_ALIAS) {
+            size_t key_line = p->current.start.line;
             inc_build(p, OYL_EVT_ALIAS, p->current.start, p->current.end, false)->value = p->current.value;
             consume_token(p);
 
             peek_token(p);
-            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE) {
+            if (tok_type(p) == OYL_TOK_BLOCK_MAP_VALUE && p->current.start.line == key_line) {
                 inc_commit(p);
                 p->state = ST_BLOCK_MAP_VALUE;
             } else {
@@ -5318,6 +5340,11 @@ void oyl_parser_fail(oyl_parser *p, oyl_status status, oyl_mark mark, const char
 }
 
 oyl_arena *oyl_parser_arena(const oyl_parser *p) { return p->arena; }
+const oyl_dialect *oyl_parser_default_dialect(oyl_parser *p) { return default_dialect(p); }
+void oyl_parser_get_warn(const oyl_parser *p, oyl_warn_fn *fn, void **user) {
+    *fn = p->warn.fn;
+    *user = p->warn.user;
+}
 bool oyl_parser_owns_dialect(const oyl_parser *p, const oyl_dialect *d) {
     return d == &p->schema_dialect;
 }

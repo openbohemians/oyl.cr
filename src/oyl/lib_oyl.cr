@@ -236,6 +236,22 @@ lib LibOyl
 
   fun parse_json = oyl_parse_json(p : Parser*, schema : Schema*, flags : LibC::UInt, json : Str*) : Status
 
+  # ── Upgrade ──────────────────────────────────────────────
+
+  struct Fix
+    kind : LibC::Int
+    mark : Mark
+    before : Str
+    after : Str
+    fixed : Bool
+    message : LibC::Char*
+  end
+
+  UPGRADE_KEYS_KEEP_VALUE  = 1_u32
+  UPGRADE_VALUES_KEEP_TEXT = 2_u32
+
+  fun upgrade = oyl_upgrade(p : Parser*, flags : LibC::UInt, out : Str*, fixes : Fix**, nfixes : LibC::SizeT*) : Status
+
   # ── Emitter ──────────────────────────────────────────────
 
   fun emitter_new = oyl_emitter_new(a : Arena*) : Emitter*

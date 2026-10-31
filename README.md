@@ -271,6 +271,25 @@ A key set twice keeps its last value, or with `strict: true` raises
 `Oyl::ParseException`. `Oyl.yaml_to_json_all` converts every document of
 a stream.
 
+### Upgrading YAML 1.1 to 1.2
+
+`Oyl.upgrade` makes a YAML 1.1 file read the same in YAML 1.2, rewriting
+only what a 1.2 reader would read otherwise and keeping every other byte:
+comments, layout, quoting, key order. Name the file's reader (`:yaml11`
+for PyYAML and Ansible, `:goyaml2` for go-yaml v2 and Kubernetes), and
+afterwards the file reads the same in it and in YAML 1.2:
+
+```crystal
+text, fixes = Oyl.upgrade("on: push\nenabled: yes\nmode: 0755\n", from: :yaml11)
+text # => "\"on\": push\nenabled: true\nmode: !!int 0o755\n"
+fixes.each { |f| puts "#{f.line}:#{f.column} #{f.before} -> #{f.after}  #{f.message}" }
+```
+
+Values keep the reader's meaning (`yes` was true), keys their text (`on:`
+is a name); `keys_keep_value: true` and `values_keep_text: true` flip
+either. Without `from:`, what PyYAML and go-yaml v2 read alike is fixed,
+and what they read otherwise is reported (`fixed?` false), left for you.
+
 ## API
 
 ### Oyl
@@ -283,6 +302,7 @@ a stream.
 | `Oyl.dump_all(values, style: :block, indent: 2)` | `String` | Write each value as a document of one stream |
 | `Oyl.yaml_to_json(data, dialect: :yaml12, strict: false)` | `String` | Convert the first document to JSON |
 | `Oyl.yaml_to_json_all(data, dialect: :yaml12, strict: false)` | `Array(String)` | Convert each document to JSON |
+| `Oyl.upgrade(data, from: nil, keys_keep_value: false, values_keep_text: false)` | `{String, Array(Oyl::Fix)}` | Make a YAML 1.1 file read the same in YAML 1.2, in place |
 
 ### Oyl::Any
 

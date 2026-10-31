@@ -179,6 +179,26 @@ static bool continuation_indent_ok(const oyl_scanner *s, char closer) {
     return (ptrdiff_t)(k - line_start) > s->indent;
 }
 
+/* The leniency warnings' messages: oyl_upgrade tells them apart */
+const char oyl_msg_squote_escape[] = "\\' in double quotes is not a YAML 1.2 escape (read as ')";
+const char oyl_msg_eof_no_break[] =
+    "block scalar ending the input without a line break: no final line feed, "
+    "as libyaml reads it (YAML 1.2 gives one)";
+const char oyl_msg_flow_indent[] =
+    "a line not indented past its block, or with a tab: not YAML 1.2 (read as libyaml does)";
+
+/* A continuation line continuation_indent_ok rejects (or a plain scalar's
+ * in flow, below): under OYL_SYNTAX_FLOW_INDENT read as libyaml reads it,
+ * which doesn't check these lines' indentation, with a warning at the
+ * line's start; otherwise an error. */
+NOINLINE bool continuation_lenient(oyl_scanner *s) {
+    if (!(s->syntax & OYL_SYNTAX_FLOW_INDENT)) return false;
+    if (s->warn)
+        oyl_warn(s->warn, OYL_WARN_LENIENCY, (oyl_mark){ s->pos - (s->col - 1), s->line, 1 },
+                 oyl_msg_flow_indent);
+    return true;
+}
+
 /* oyl_skip_blanks at the cursor, with the runs between tokens it is mostly
  * called for (none, or one space) taken inline. */
 ALWAYS_INLINE size_t skip_blanks_here(const oyl_scanner *s) {
@@ -232,7 +252,7 @@ ALWAYS_INLINE const char *skip_blanks_and_comments(oyl_scanner *s) {
      * more than the enclosing block (closing brackets excepted) */
     if (line_start != SIZE_MAX && s->flow_level > 0 && !AT_END(s)) {
         char c = s->buf[s->pos];
-        if (c != ']' && c != '}' && !continuation_indent_ok(s, 0))
+        if (c != ']' && c != '}' && !continuation_indent_ok(s, 0) && !continuation_lenient(s))
             return "flow collection content must be indented more than the enclosing block";
     }
 
@@ -611,24 +631,44 @@ ALWAYS_INLINE oyl_status scan_plain_scalar(oyl_scanner *s, oyl_token *tok) {
                 break;
             }
 
-            ptrdiff_t next_indent = (ptrdiff_t)s->col - 1;
+            /* the line's indentation is its leading spaces: a tab after
+             * them separates but doesn't indent ("a: b\n\tc" isn't "b c") */
             ptrdiff_t min_indent = s->indent + 1;
             if (min_indent < 0) min_indent = 0;
+            size_t spaces = ahead_line_start;
+            while (spaces < s->pos && s->buf[spaces] == ' ') spaces++;
+            bool lenient = false;
+            if ((ptrdiff_t)(spaces - ahead_line_start) < min_indent) {
+                /* libyaml reads on in flow context, but not past a tab
+                 * where the indentation would be */
+                if (s->flow_level == 0 || oyl_is_flow(PEEK(s)) ||
+                    !(s->syntax & OYL_SYNTAX_FLOW_INDENT)) {
+                    END_AT_BREAK();
+                    break;
+                }
+                if (spaces < s->pos) {
+                    s->col = spaces - ahead_line_start + 1;
+                    s->pos = spaces;
+                    SCAN_ERROR(s, "tabs are not allowed as indentation");
+                }
+                lenient = true;
+            }
 
-            if (next_indent < min_indent) {
+            /* check for indicators that end the scalar. Only ": ", "#", a
+             * document marker and in flow a flow indicator do: a line
+             * indented enough to continue the scalar may start with any
+             * other indicator (YAML 1.2, 7.3.3: only a plain scalar's first
+             * character is restricted). So "a\n- b", "a\n&b" and "[a\n? b]"
+             * are "a - b", "a &b" and ["a ? b"]. A line at or below a block
+             * collection's indent, where "- " or "&" could start a node,
+             * failed the indentation check above */
+            uint8_t nc = PEEK(s);
+            /* "[a\n\n]" is ["a"]: the scalar ends before the empty lines,
+             * which fold into it only to join a next line's text */
+            if (s->flow_level > 0 && oyl_is_flow(nc)) {
                 END_AT_BREAK();
                 break;
             }
-
-            /* check for indicators that end the scalar. Only ": ", "#" and
-             * a document marker do: a line indented enough to continue the
-             * scalar may start with any other indicator (YAML 1.2, 7.3.3:
-             * only a plain scalar's first character is restricted). So
-             * "a\n- b", "a\n&b" and "[a\n? b]" are "a - b", "a &b" and
-             * ["a ? b"]. A line at or below a block collection's indent,
-             * where "- " or "&" could start a node, failed the indentation
-             * check above */
-            uint8_t nc = PEEK(s);
             /* : followed by whitespace always ends (it introduces a mapping value) */
             if (nc == ':') {
                 uint8_t after = PEEK_AT(s, 1);
@@ -652,6 +692,7 @@ ALWAYS_INLINE oyl_status scan_plain_scalar(oyl_scanner *s, oyl_token *tok) {
             }
 
             /* it IS a continuation — switch to buffer mode */
+            if (lenient) continuation_lenient(s);
             TRIM_TRAILING();
             SWITCH_TO_BUF();
 
@@ -765,7 +806,7 @@ NOINLINE oyl_status scan_single_quoted_slow(oyl_scanner *s, oyl_token *tok, oyl_
             /* document indicators at start of line in multi-line quoted scalar → error */
             if (s->col == 1 && is_doc_indicator_at(s->buf, s->pos, s->len))
                 SCAN_ERROR(s, "document indicator in single-quoted scalar");
-            if (!continuation_indent_ok(s, '\''))
+            if (!continuation_indent_ok(s, '\'') && !continuation_lenient(s))
                 SCAN_ERROR(s, "continuation line of a quoted scalar must be indented");
             SQ_ENSURE(break_count);
             if (break_count == 1) {
@@ -875,8 +916,7 @@ NOINLINE oyl_status scan_double_quoted_slow(oyl_scanner *s, oyl_token *tok, oyl_
                         oyl_mark at = mark(s);
                         at.offset -= 2;
                         at.col -= 2;
-                        oyl_warn(s->warn, OYL_WARN_LENIENCY, at,
-                                 "\\' in double quotes is not a YAML 1.2 escape (read as ')");
+                        oyl_warn(s->warn, OYL_WARN_LENIENCY, at, oyl_msg_squote_escape);
                     }
                     break;
                 case 'N':  /* NEL U+0085 — encode as UTF-8 */
@@ -941,11 +981,23 @@ NOINLINE oyl_status scan_double_quoted_slow(oyl_scanner *s, oyl_token *tok, oyl_
                 }
                 case '\n': /* escaped newline — line folding */
                 case '\r':
-                    /* skip the break and any leading whitespace on next line */
+                    /* skip the break and any leading whitespace on next line;
+                     * advance() counted a lone CR as a column, not a line */
                     if (esc == '\r' && PEEK(s) == '\n') advance(s, 1);
+                    else if (esc == '\r') { s->line++; s->col = 1; }
                     while (!AT_END(s) && oyl_is_blank(PEEK(s))) advance(s, 1);
+                    /* each empty line after it is a line feed (YAML 1.2,
+                     * s-double-escaped: l-empty), so "a\<LF><LF>b" is
+                     * "a\nb" (Oyl read "a b" until 2026-10-30) */
+                    while (!AT_END(s) && oyl_is_break(PEEK(s))) {
+                        skip_break(s);
+                        buf[out++] = '\n';
+                        while (!AT_END(s) && oyl_is_blank(PEEK(s))) advance(s, 1);
+                    }
+                    if (s->col == 1 && is_doc_indicator_at(s->buf, s->pos, s->len))
+                        SCAN_ERROR(s, "document indicator in double-quoted scalar");
                     if (!AT_END(s) && !oyl_is_break(PEEK(s)) &&
-                        !continuation_indent_ok(s, '"'))
+                        !continuation_indent_ok(s, '"') && !continuation_lenient(s))
                         SCAN_ERROR(s, "continuation line of a quoted scalar must be indented");
                     content_end = out; /* escaped newline doesn't affect trim */
                     continue; /* skip content_end update below */
@@ -968,7 +1020,7 @@ NOINLINE oyl_status scan_double_quoted_slow(oyl_scanner *s, oyl_token *tok, oyl_
             /* document indicators at start of line in multi-line quoted scalar → error */
             if (s->col == 1 && is_doc_indicator_at(s->buf, s->pos, s->len))
                 SCAN_ERROR(s, "document indicator in double-quoted scalar");
-            if (!continuation_indent_ok(s, '"'))
+            if (!continuation_indent_ok(s, '"') && !continuation_lenient(s))
                 SCAN_ERROR(s, "continuation line of a quoted scalar must be indented");
             if (break_count == 1) {
                 buf[out++] = ' ';
@@ -1110,11 +1162,12 @@ NOINLINE oyl_status scan_block_scalar(oyl_scanner *s, oyl_token *tok, oyl_mark s
     int chomp = 0;  /* 0=clip, -1=strip, 1=keep */
     int explicit_indent = 0;
 
+    /* one of each at most: |++ and |11 are errors (below) */
     for (int i = 0; i < 2 && !AT_END(s) && !oyl_is_break(PEEK(s)); i++) {
         uint8_t ch = PEEK(s);
-        if (ch == '-') { chomp = -1; advance(s, 1); }
-        else if (ch == '+') { chomp = 1; advance(s, 1); }
-        else if (ch >= '1' && ch <= '9') { explicit_indent = ch - '0'; advance(s, 1); }
+        if (ch == '-' && !chomp) { chomp = -1; advance(s, 1); }
+        else if (ch == '+' && !chomp) { chomp = 1; advance(s, 1); }
+        else if (ch >= '1' && ch <= '9' && !explicit_indent) { explicit_indent = ch - '0'; advance(s, 1); }
         else break;
     }
 
@@ -1380,7 +1433,13 @@ NOINLINE oyl_status scan_block_scalar(oyl_scanner *s, oyl_token *tok, oyl_mark s
      * line feed; YAML 1.2 (and its test suite) gives one */
     bool eof_lenient = !terminated && (s->syntax & OYL_SYNTAX_EOF_NO_BREAK) && chomp != -1;
     bool dropped = false;
-    if (eof_lenient && out > 0 && buf[out - 1] == '\n') { out--; dropped = true; }
+    if (eof_lenient && out > 0 && buf[out - 1] == '\n') {
+        out--;
+        /* clipping keeps one line feed of several: dropping one of them
+         * changes nothing ("|\n z\n " ends its last line, then an empty
+         * one), so no warning */
+        dropped = chomp == 1 || out == 0 || buf[out - 1] != '\n';
+    }
 
     /* apply chomping to trailing newlines */
     if (chomp == -1) {
@@ -1403,9 +1462,7 @@ NOINLINE oyl_status scan_block_scalar(oyl_scanner *s, oyl_token *tok, oyl_mark s
         }
     }
     if (dropped && s->warn)
-        oyl_warn(s->warn, OYL_WARN_LENIENCY, start,
-                 "block scalar ending the input without a line break: no final line feed, "
-                 "as libyaml reads it (YAML 1.2 gives one)");
+        oyl_warn(s->warn, OYL_WARN_LENIENCY, start, oyl_msg_eof_no_break);
     /* keep (chomp == 1): preserve all trailing newlines as-is */
 
     buf[out] = '\0';

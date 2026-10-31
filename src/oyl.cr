@@ -9,6 +9,7 @@ require "./oyl/any"
 require "./oyl/builder"
 require "./oyl/to_oyl"
 require "./oyl/json"
+require "./oyl/upgrade"
 
 module Oyl
   VERSION = "0.5.0"

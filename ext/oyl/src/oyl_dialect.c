@@ -10,7 +10,8 @@
 
 static const oyl_dialect yaml12 = { .schema = NULL, .syntax = 0, .merge = OYL_MERGE_YAML,
                                     .minor = 2 };
-static const oyl_dialect yaml11 = { .schema = NULL, .syntax = OYL_SYNTAX_EOF_NO_BREAK,
+static const oyl_dialect yaml11 = { .schema = NULL,
+                                    .syntax = OYL_SYNTAX_EOF_NO_BREAK | OYL_SYNTAX_FLOW_INDENT,
                                     .merge = OYL_MERGE_YAML, .minor = 1 };
 static const oyl_dialect goyaml2 = { .schema = NULL, .syntax = OYL_SYNTAX_GOYAML2,
                                      .merge = OYL_MERGE_ORDERED, .minor = 1 };
